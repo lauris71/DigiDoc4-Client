@@ -294,9 +294,9 @@ void ContainerPage::transition(CryptoDoc *container, const QSslCertificate &cert
 	setHeader(container->fileName());
 	bool hasUnsupported = false;
 	ui->rightPane->clear();
-	for(const CKey &key: container->keys())
+	for(std::shared_ptr<CKey> key: container->keys())
 	{
-		hasUnsupported = std::max(hasUnsupported, key.unsupported);
+		hasUnsupported = std::max(hasUnsupported, key->unsupported);
 		ui->rightPane->addWidget(new AddressItem(key, ui->rightPane, true));
 	}
 	if(hasUnsupported)
@@ -369,9 +369,9 @@ void ContainerPage::update(CryptoDoc* container, const QSslCertificate &cert)
 	hasEmptyFile = false;
 	bool hasUnsupported = false;
 	ui->rightPane->clear();
-	for(const CKey &key: container->keys())
+	for(std::shared_ptr<CKey> key: container->keys())
 	{
-		hasUnsupported = std::max(hasUnsupported, key.unsupported);
+		hasUnsupported = std::max(hasUnsupported, key->unsupported);
 		ui->rightPane->addWidget(new AddressItem(key, ui->rightPane, true));
 	}
 	if(hasUnsupported)

@@ -30,12 +30,12 @@ class AddressItem::Private: public Ui::AddressItem
 {
 public:
 	QString code;
-	CKey key;
+	std::shared_ptr<CKey> key;
 	QString label;
 	bool yourself = false;
 };
 
-AddressItem::AddressItem(CKey k, QWidget *parent, bool showIcon)
+AddressItem::AddressItem(std::shared_ptr<CKey> k, QWidget *parent, bool showIcon)
 	: Item(parent)
 	, ui(new Private)
 {
@@ -53,12 +53,12 @@ AddressItem::AddressItem(CKey k, QWidget *parent, bool showIcon)
 	connect(ui->add, &QToolButton::clicked, this, [this]{ emit add(this);});
 	connect(ui->remove, &QToolButton::clicked, this, [this]{ emit remove(this);});
 
-	ui->code = SslCertificate(ui->key.cert).personalCode();
-	ui->label = !ui->key.cert.subjectInfo("GN").isEmpty() && !ui->key.cert.subjectInfo("SN").isEmpty() ?
-			ui->key.cert.subjectInfo("GN").join(' ') + ' ' + ui->key.cert.subjectInfo("SN").join(' ') :
-			ui->key.cert.subjectInfo("CN").join(' ');
+	ui->code = SslCertificate(ui->key->cert).personalCode();
+	ui->label = !ui->key->cert.subjectInfo("GN").isEmpty() && !ui->key->cert.subjectInfo("SN").isEmpty() ?
+			ui->key->cert.subjectInfo("GN").join(' ') + ' ' + ui->key->cert.subjectInfo("SN").join(' ') :
+			ui->key->cert.subjectInfo("CN").join(' ');
 	if(ui->label.isEmpty())
-		ui->label = ui->key.fromKeyLabel().value(QStringLiteral("cn"), ui->key.recipient);
+		ui->label = ui->key->fromKeyLabel().value(QStringLiteral("cn"), ui->key->recipient);
 	setIdType();
 	showButton(AddressItem::Remove);
 }
@@ -79,15 +79,15 @@ void AddressItem::changeEvent(QEvent* event)
 	QWidget::changeEvent(event);
 }
 
-const CKey& AddressItem::getKey() const
+const std::shared_ptr<CKey> AddressItem::getKey() const
 {
 	return ui->key;
 }
 
 void AddressItem::idChanged(const SslCertificate &cert)
 {
-	CKey key(cert);
-	ui->yourself = !key.key.isNull() && ui->key == key;
+	auto key = CKey::fromCertificate(cert);
+	ui->yourself = !key->key.isNull() && ui->key == key;
 	setName();
 }
 
@@ -108,7 +108,7 @@ QWidget* AddressItem::lastTabWidget()
 
 void AddressItem::mouseReleaseEvent(QMouseEvent * /*event*/)
 {
-	if(!ui->key.unsupported)
+	if(!ui->key->unsupported)
 		(new KeyDialog(ui->key, this))->open();
 }
 
@@ -135,7 +135,7 @@ void AddressItem::stateChange(ContainerState state)
 void AddressItem::setIdType()
 {
 	ui->expire->clear();
-	SslCertificate cert(ui->key.cert);
+	SslCertificate cert(ui->key->cert);
 	SslCertificate::CertType type = cert.type();
 	if(ui->key.unsupported)
 	{

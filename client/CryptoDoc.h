@@ -29,17 +29,18 @@
 
 class QSslKey;
 
-class CKey
+struct CKey
 {
 public:
 	enum Tag
 	{
 		Unsupported,
 	};
-	CKey() = default;
-	CKey(Tag);
-	CKey(QByteArray _key, bool _isRSA): key(std::move(_key)), isRSA(_isRSA) {}
-	CKey(const QSslCertificate &cert);
+	enum Type {
+		CERTIFICATE,
+		SERVER
+	};
+
 	bool operator==(const CKey &other) const { return other.key == key; }
 
 	void setCert(const QSslCertificate &c);
@@ -56,9 +57,24 @@ public:
 	// CDoc2
 	QByteArray encrypted_kek;
 	QString keyserver_id, transaction_id;
+
+	static std::shared_ptr<CKey> newEmpty();
+	static std::shared_ptr<CKey> fromKey(QByteArray _key, bool _isRSA);
+	static std::shared_ptr<CKey> fromCertificate(const QSslCertificate &cert);
+protected:
+	CKey() = default;
+	CKey(Tag);
+	CKey(QByteArray _key, bool _isRSA): key(std::move(_key)), isRSA(_isRSA) {}
+	CKey(const QSslCertificate &cert);
 };
 
+//struct CKeyCert : public CKey {
+//
+//}
 
+//struct CKeyServer : public CKey {
+//	
+//}
 
 class CDoc
 {
@@ -71,14 +87,14 @@ public:
 	};
 
 	virtual ~CDoc() = default;
-	virtual CKey canDecrypt(const QSslCertificate &cert) const = 0;
+	virtual std::shared_ptr<CKey> canDecrypt(const QSslCertificate &cert) const = 0;
 	virtual bool decryptPayload(const QByteArray &key) = 0;
 	virtual bool save(const QString &path) = 0;
 	bool setLastError(const QString &msg) { return (lastError = msg).isEmpty(); }
 	virtual QByteArray transportKey(const CKey &key) = 0;
 	virtual int version() = 0;
 
-	QList<CKey> keys;
+	QList<std::shared_ptr<CKey>> keys;
 	std::vector<File> files;
 	QString lastError;
 };
@@ -90,14 +106,14 @@ public:
 	CryptoDoc(QObject *parent = nullptr);
 	~CryptoDoc() final;
 
-	bool addKey( const CKey &key );
+	bool addKey(std::shared_ptr<CKey> key );
 	bool canDecrypt(const QSslCertificate &cert);
 	void clear(const QString &file = {});
 	bool decrypt();
 	DocumentModel* documentModel() const;
 	bool encrypt(const QString &filename = {});
 	QString fileName() const;
-	QList<CKey> keys() const;
+	QList<std::shared_ptr<CKey>> keys() const;
 	bool move(const QString &to);
 	bool open( const QString &file );
 	void removeKey( int id );

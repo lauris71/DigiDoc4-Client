@@ -39,7 +39,7 @@ AddressItem::AddressItem(std::shared_ptr<CKey> k, QWidget *parent, bool showIcon
 	: Item(parent)
 	, ui(new Private)
 {
-	ui->key = std::move(k);
+	ui->key = k;
 	ui->setupUi(this);
 	if(showIcon)
 		ui->icon->load(QStringLiteral(":/images/icon_Krypto_small.svg"));
@@ -47,18 +47,28 @@ AddressItem::AddressItem(std::shared_ptr<CKey> k, QWidget *parent, bool showIcon
 	ui->name->setAttribute(Qt::WA_TransparentForMouseEvents, true);
 	ui->expire->setAttribute(Qt::WA_TransparentForMouseEvents, true);
 	ui->idType->setAttribute(Qt::WA_TransparentForMouseEvents, true);
-	if(!ui->key.unsupported)
+    if(!ui->key->unsupported)
 		setCursor(Qt::PointingHandCursor);
 
 	connect(ui->add, &QToolButton::clicked, this, [this]{ emit add(this);});
-	connect(ui->remove, &QToolButton::clicked, this, [this]{ emit remove(this);});
+    //connect(ui->remove, &LabelButton::clicked, this, [this]{ emit remove(this);});
+    connect(ui->decrypt, &QToolButton::clicked, this, [this]{ emit decrypt(ui->key);});
 
-	ui->code = SslCertificate(ui->key->cert).personalCode();
-	ui->label = !ui->key->cert.subjectInfo("GN").isEmpty() && !ui->key->cert.subjectInfo("SN").isEmpty() ?
-			ui->key->cert.subjectInfo("GN").join(' ') + ' ' + ui->key->cert.subjectInfo("SN").join(' ') :
-			ui->key->cert.subjectInfo("CN").join(' ');
-	if(ui->label.isEmpty())
-		ui->label = ui->key->fromKeyLabel().value(QStringLiteral("cn"), ui->key->recipient);
+	if (CKeyCD1::isCDoc1Key(*ui->key)) {
+		std::shared_ptr<CKeyCD1> key = std::static_pointer_cast<CKeyCD1>(ui->key);
+		ui->code = SslCertificate(key->cert).personalCode();
+		ui->label = (!key->cert.subjectInfo("GN").isEmpty() && !key->cert.subjectInfo("SN").isEmpty() ?
+				key->cert.subjectInfo("GN").join(' ') + " " + key->cert.subjectInfo("SN").join(' ') :
+				key->cert.subjectInfo("CN").join(' '));
+	} else {
+		std::shared_ptr<CKeyCD2> cd2key = std::static_pointer_cast<CKeyCD2>(ui->key);
+		ui->code = {};
+		ui->label = cd2key->label;
+	}
+	if(ui->label.isEmpty() && ui->key->type == CKey::PUBLICKEY) {
+        std::shared_ptr<CKeyPK> key = std::static_pointer_cast<CKeyPK>(ui->key);
+        ui->label = ui->key->fromKeyLabel().value(QStringLiteral("cn"), key->label);
+	}
 	setIdType();
 	showButton(AddressItem::Remove);
 }
@@ -86,9 +96,9 @@ const std::shared_ptr<CKey> AddressItem::getKey() const
 
 void AddressItem::idChanged(const SslCertificate &cert)
 {
-	auto key = CKey::fromCertificate(cert);
-	ui->yourself = !key->key.isNull() && ui->key == key;
-	setName();
+    auto key = CKeyCD1::fromCertificate(cert);
+    ui->yourself = !key->key.isNull() && ui->key == key;
+    setName();
 }
 
 void AddressItem::initTabOrder(QWidget *item)
@@ -109,7 +119,7 @@ QWidget* AddressItem::lastTabWidget()
 void AddressItem::mouseReleaseEvent(QMouseEvent * /*event*/)
 {
 	if(!ui->key->unsupported)
-		(new KeyDialog(ui->key, this))->open();
+        (new KeyDialog(*ui->key))->open();
 }
 
 void AddressItem::setName()
@@ -135,9 +145,17 @@ void AddressItem::stateChange(ContainerState state)
 void AddressItem::setIdType()
 {
 	ui->expire->clear();
-	SslCertificate cert(ui->key->cert);
+	if (ui->key->type != CKey::CDOC1) {
+        ui->idType->setText("CDOC2 Key");
+		return;
+	}
+	ui->idType->setHidden(false);
+	std::shared_ptr<CKeyCD1> ckd = std::static_pointer_cast<CKeyCD1>(ui->key);
+
+	QString str;
+	SslCertificate cert(ckd->cert);
 	SslCertificate::CertType type = cert.type();
-	if(ui->key.unsupported)
+    if(ui->key->unsupported)
 	{
 		ui->label = tr("Unsupported cryptographic algorithm or recipient type");
 		ui->idType->clear();
@@ -159,7 +177,7 @@ void AddressItem::setIdType()
 	}
 	else
 	{
-		auto items = ui->key.fromKeyLabel();
+        auto items = ui->key->fromKeyLabel();
 		void(QT_TR_NOOP("ID-CARD"));
 		ui->idType->setText(tr(items[QStringLiteral("type")].toUtf8().data()));
 		if(QString server_exp = items[QStringLiteral("server_exp")]; !server_exp.isEmpty())
@@ -184,3 +202,4 @@ void AddressItem::setIdType()
 	ui->idType->setHidden(ui->idType->text().isEmpty());
 	ui->expire->setHidden(ui->expire->text().isEmpty());
 }
+

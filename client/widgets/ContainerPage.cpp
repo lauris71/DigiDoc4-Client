@@ -368,12 +368,13 @@ void ContainerPage::update(CryptoDoc* container, const QSslCertificate &cert)
 	isSupported = container->canDecrypt(cert) || container->state() & UnencryptedContainer;
 	hasEmptyFile = false;
 	bool hasUnsupported = false;
-	ui->rightPane->clear();
-	for(std::shared_ptr<CKey> key: container->keys())
-	{
+    ui->rightPane->clear();
+    for(std::shared_ptr<CKey>& key: container->keys()) {
 		hasUnsupported = std::max(hasUnsupported, key->unsupported);
-		ui->rightPane->addWidget(new AddressItem(key, ui->rightPane, true));
-	}
+        AddressItem *addr = new AddressItem(key, ui->rightPane, true);
+        connect(addr, &AddressItem::decrypt, this, [this,key]{emit decryptReq(key);});
+        ui->rightPane->addWidget(addr);
+    }
 	if(hasUnsupported)
 		emit warning({UnsupportedCDocWarning});
 	if(container->state() & EncryptedContainer)
@@ -477,3 +478,4 @@ void ContainerPage::translateLabels()
 	ui->convert->setText(tr(convertText));
 	ui->convert->setAccessibleName(tr(convertText).toLower());
 }
+

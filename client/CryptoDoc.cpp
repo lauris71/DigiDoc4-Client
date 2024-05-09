@@ -61,7 +61,7 @@ public:
 
 	std::unique_ptr<CDoc> cdoc;
 	QString			fileName;
-	QByteArray		key;
+	QByteArray		fmk;
 	bool			isEncrypted = false;
 	CDocumentModel	*documents = new CDocumentModel(this);
 	QStringList		tempFiles;
@@ -81,7 +81,7 @@ void CryptoDoc::Private::run()
 	if(isEncrypted)
 	{
 		qCDebug(CRYPTO) << "Decrypt" << fileName;
-		isEncrypted = !cdoc->decryptPayload(key);
+		isEncrypted = !cdoc->decryptPayload(fmk);
 	}
 	else
 	{
@@ -218,11 +218,8 @@ QString CDocumentModel::save(int row, const QString &path) const
 	return fileName;
 }
 
-CKey::CKey(Tag)
-	: unsupported(true)
-{}
-
-CKey::CKey(const QSslCertificate &c)
+CKeyCD1::CKeyCD1(const QSslCertificate &c)
+: CKey(Type::CDOC1)
 {
 	setCert(c);
 	recipient = [](const SslCertificate &c) {
@@ -243,20 +240,38 @@ CKey::CKey(const QSslCertificate &c)
 	}(c);
 }
 
-void CKey::setCert(const QSslCertificate &c)
+std::shared_ptr<CKeyCD1>
+CKeyCD1::newEmpty() {
+	return std::shared_ptr<CKeyCD1>(new CKeyCD1());
+}
+
+std::shared_ptr<CKeyCD1>
+CKeyCD1::fromKey(QByteArray _key, PKType _pk_type) {
+	return std::shared_ptr<CKeyCD1>(new CKeyCD1(_key, _pk_type));
+}
+
+std::shared_ptr<CKeyCD1>
+CKeyCD1::fromCertificate(const QSslCertificate &cert) {
+	return std::shared_ptr<CKeyCD1>(new CKeyCD1(cert));
+}
+
+void CKeyCD1::setCert(const QSslCertificate &c)
 {
 	QSslKey k = c.publicKey();
 	cert = c;
 	key = Crypto::toPublicKeyDer(k);
-	isRSA = k.algorithm() == QSsl::Rsa;
+	pk_type = (k.algorithm() == QSsl::Rsa) ? PKType::RSA : PKType::ECC;
 }
 
 QHash<QString, QString> CKey::fromKeyLabel() const
 {
-	QHash<QString,QString> result;
-	if(!recipient.startsWith(QLatin1String("data:"), Qt::CaseInsensitive))
+    QHash<QString,QString> result;
+    if (!CKeyCD2::isCDoc2Key(*this)) return result;
+    CKeyCD2 *cd2 = (CKeyCD2 *) this;
+    QString rcpt(cd2->label);
+    if(!rcpt.startsWith(QLatin1String("data:"), Qt::CaseInsensitive))
 		return result;
-	QString payload = recipient.mid(5);
+    QString payload = rcpt.mid(5);
 	QString mimeType;
 	QString encoding;
 	if(auto pos = payload.indexOf(','); pos != -1)
@@ -283,14 +298,20 @@ QHash<QString, QString> CKey::fromKeyLabel() const
 
 QString CKey::toKeyLabel() const
 {
-	if(cert.isNull())
-		return recipient;
-	QDateTime exp = cert.expiryDate();
+    if (CKeyCD2::isCDoc2Key(*this)) {
+        CKeyCD2 *cd2 = (CKeyCD2 *) this;
+        return cd2->label;
+    }
+    if (!CKeyCD1::isCDoc1Key(*this)) return {};
+    CKeyCD1 *cd1 = (CKeyCD1 *) this;
+    if(cd1->cert.isNull())
+        return cd1->recipient;
+    QDateTime exp = cd1->cert.expiryDate();
 	if(Settings::CDOC2_USE_KEYSERVER)
 		exp = std::min(exp, QDateTime::currentDateTimeUtc().addMonths(6));
 	auto escape = [](QString data) { return data.replace(',', QLatin1String("%2C")); };
 	QString type = QStringLiteral("ID-card");
-	if(auto t = SslCertificate(cert).type(); t & SslCertificate::EResidentSubType)
+    if(auto t = SslCertificate(cd1->cert).type(); t & SslCertificate::EResidentSubType)
 		type = QStringLiteral("Digi-ID E-RESIDENT");
 	else if(t & SslCertificate::DigiIDType)
 		type = QStringLiteral("Digi-ID");
@@ -298,26 +319,16 @@ QString CKey::toKeyLabel() const
 	q.setQueryItems({
 		{QStringLiteral("v"), QString::number(1)},
 		{QStringLiteral("type"), type},
-		{QStringLiteral("serial_number"), escape(cert.subjectInfo("serialNumber").join(','))},
-		{QStringLiteral("cn"), escape(cert.subjectInfo("CN").join(','))},
+        {QStringLiteral("serial_number"), escape(cd1->cert.subjectInfo("serialNumber").join(','))},
+        {QStringLiteral("cn"), escape(cd1->cert.subjectInfo("CN").join(','))},
 		{QStringLiteral("server_exp"), QString::number(exp.toSecsSinceEpoch())},
 	});
 	return "data:" + q.query(QUrl::FullyEncoded);
 }
 
-std::shared_ptr<CKey>
-CKey::newEmpty() {
-	return std::shared_ptr<CKey>(new CKey());
-}
-
-std::shared_ptr<CKey>
-CKey::fromKey(QByteArray _key, bool _isRSA) {
-	return std::shared_ptr<CKey>(new CKey(_key, _isRSA));
-}
-
-std::shared_ptr<CKey>
-CKey::fromCertificate(const QSslCertificate &cert) {
-	return std::shared_ptr<CKey>(new CKey(cert));
+std::shared_ptr<CKeyServer>
+CKeyServer::fromKey(QByteArray _key, PKType _pk_type) {
+	return std::shared_ptr<CKeyServer>(new CKeyServer(_key, _pk_type));
 }
 
 CryptoDoc::CryptoDoc( QObject *parent )
@@ -346,8 +357,10 @@ bool CryptoDoc::addKey(std::shared_ptr<CKey> key )
 
 bool CryptoDoc::canDecrypt(const QSslCertificate &cert)
 {
-	auto ckey = d->cdoc->canDecrypt(cert);
-	return !ckey->key.isEmpty();
+	//std::shared_ptr<CKey> ckey = d->cdoc->getDecryptionKey(cert);
+	//return (ckey != nullptr) && !ckey->key.isEmpty();
+	CKey::DecryptionStatus dec_stat = d->cdoc->canDecrypt(cert);
+	return (dec_stat == CKey::CAN_DECRYPT) || (dec_stat == CKey::DecryptionStatus::NEED_KEY);
 }
 
 void CryptoDoc::clear( const QString &file )
@@ -372,7 +385,7 @@ ContainerState CryptoDoc::state() const
 	return d->isEncrypted ? EncryptedContainer : UnencryptedContainer;
 }
 
-bool CryptoDoc::decrypt()
+bool CryptoDoc::decrypt(std::shared_ptr<CKey> key, const QByteArray& secret)
 {
 	if( d->fileName.isEmpty() )
 	{
@@ -382,14 +395,15 @@ bool CryptoDoc::decrypt()
 	if(!d->isEncrypted)
 		return true;
 
-	auto ckey = d->cdoc->canDecrypt(qApp->signer()->tokenauth().cert());
-	if(ckey->key.isEmpty())
-	{
+    if (key == nullptr) {
+        key = d->cdoc->getDecryptionKey(qApp->signer()->tokenauth().cert());
+    }
+    if((key == nullptr) || (key->key.isEmpty() && secret.isEmpty())) {
 		WarningDialog::show(tr("You do not have the key to decrypt this document"));
 		return false;
 	}
 
-	if(d->cdoc->version() == 2 && !ckey->transaction_id.isEmpty() && !Settings::CDOC2_NOTIFICATION.isSet())
+    if(d->cdoc->version() == 2 && (key->type == CKey::Type::SERVER) && !Settings::CDOC2_NOTIFICATION.isSet())
 	{
 		auto *dlg = new WarningDialog(tr("You must enter your PIN code twice in order to decrypt the CDOC2 container. "
 			"The first PIN entry is required for authentication to the key server referenced in the CDOC2 container. "
@@ -407,12 +421,11 @@ bool CryptoDoc::decrypt()
 		}
 	}
 
-	d->key = d->cdoc->transportKey(*ckey);
+    d->fmk = d->cdoc->getFMK(*key, secret);
 #ifndef NDEBUG
-	qDebug() << "Transport key" << d->key.toHex();
+	qDebug() << "FMK (Transport key)" << d->fmk.toHex();
 #endif
-	if(d->key.isEmpty())
-	{
+	if(d->fmk.isEmpty()) {
 		WarningDialog::show(tr("Failed to decrypt document. Please check your internet connection and network settings."), d->cdoc->lastError);
 		return false;
 	}
@@ -474,11 +487,17 @@ bool CryptoDoc::move(const QString &to)
 bool CryptoDoc::open( const QString &file )
 {
 	clear(file);
-	d->cdoc = std::make_unique<CDoc2>(d->fileName);
-	if(d->cdoc->keys.isEmpty())
-		d->cdoc = std::make_unique<CDoc1>(d->fileName);
+	if (CDoc2::isCDoc2File(d->fileName)) {
+		d->cdoc = CDoc2::load(d->fileName);
+	} else if (CDoc1::isCDoc1File(d->fileName)) {
+		d->cdoc = CDoc1::load(d->fileName);
+	} else {
+		WarningDialog::show(tr("Failed to open document"), tr("Unsupported file format"));
+		return false;
+	}
 	d->isEncrypted = bool(d->cdoc);
-	if(!d->isEncrypted || d->cdoc->keys.isEmpty())
+	// fixme: This seems wrong
+	if(!d->isEncrypted)
 	{
 		WarningDialog::show(tr("Failed to open document"), d->cdoc->lastError);
 		return false;

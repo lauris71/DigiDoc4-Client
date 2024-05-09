@@ -49,10 +49,15 @@ KeyDialog::KeyDialog( const CKey &k, QWidget *parent )
 	d->view->setHeaderLabels({tr("Attribute"), tr("Value")});
 
 	connect(d->close, &QPushButton::clicked, this, &KeyDialog::accept);
-	connect(d->showCert, &QPushButton::clicked, this, [this, cert=k.cert] {
-		CertificateDetails::showCertificate(cert, this);
-	});
-	d->showCert->setHidden(k.cert.isNull());
+	if (k.type == CKey::CDOC1) {
+		const CKeyCD1& kd = static_cast<const CKeyCD1&>(k);
+		connect(d->showCert, &QPushButton::clicked, this, [this, cert=kd.cert] {
+			CertificateDetails::showCertificate(cert, this);
+		});
+		d->showCert->setHidden(kd.cert.isNull());
+	} else {
+		d->showCert->setHidden(true);
+	}
 
 	auto addItem = [&](const QString &parameter, const QString &value) {
 		if(value.isEmpty())
@@ -63,12 +68,27 @@ KeyDialog::KeyDialog( const CKey &k, QWidget *parent )
 		d->view->addTopLevelItem(i);
 	};
 
-	addItem(tr("Recipient"), k.recipient);
-	addItem(tr("ConcatKDF digest method"), k.concatDigest);
-	addItem(tr("Key server ID"), k.keyserver_id);
-	addItem(tr("Transaction ID"), k.transaction_id);
-	addItem(tr("Expiry date"), k.cert.expiryDate().toLocalTime().toString(QStringLiteral("dd.MM.yyyy hh:mm:ss")));
-	addItem(tr("Issuer"), SslCertificate(k.cert).issuerInfo(QSslCertificate::CommonName));
+	bool adjust_size = false;
+	if (k.type == CKey::Type::CDOC1) {
+		const CKeyCD1& cd1key = static_cast<const CKeyCD1&>(k);
+		addItem(tr("Recipient"), cd1key.recipient);
+		addItem(tr("ConcatKDF digest method"), cd1key.concatDigest);
+		addItem(tr("Expiry date"), cd1key.cert.expiryDate().toLocalTime().toString(QStringLiteral("dd.MM.yyyy hh:mm:ss")));
+        addItem(tr("Issuer"), SslCertificate(cd1key.cert).issuerInfo(QSslCertificate::CommonName));
+		d->view->resizeColumnToContents( 0 );
+	} else if (CKeyCD2::isCDoc2Key(k)) {
+		const CKeyCD2& cd2key = static_cast<const CKeyCD2&>(k);
+		addItem(tr("Label"), cd2key.label);
+		if (k.type == CKey::SERVER) {
+			const CKeyServer& sk = static_cast<const CKeyServer&>(k);
+			addItem(tr("Key server ID"), sk.keyserver_id);
+			addItem(tr("Transaction ID"), sk.transaction_id);
+		}
+    } else if (k.type == CKey::Type::SERVER) {
+        const CKeyServer& skey = static_cast<const CKeyServer&>(k);
+        addItem(tr("Key server ID"), skey.keyserver_id);
+        addItem(tr("Transaction ID"), skey.transaction_id);
+    }
 	d->view->resizeColumnToContents( 0 );
 	adjustSize();
 }

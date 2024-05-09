@@ -90,6 +90,7 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
 	TokenData.cpp
 	TokenData.h
 	Utils.h
+        dialogs/PasswordDialog.h dialogs/PasswordDialog.cpp dialogs/PasswordDialog.ui
 )
 qt_add_translations(${PROJECT_NAME} TS_FILES
 	translations/en.ts

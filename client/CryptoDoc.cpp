@@ -218,11 +218,40 @@ QString CDocumentModel::save(int row, const QString &path) const
 	return fileName;
 }
 
-CKeyCD1::CKeyCD1(const QSslCertificate &c)
-: CKey(Type::CDOC1)
+bool
+CKey::isTheSameRecipient(const CKey& other) const
+{
+    QByteArray this_key, other_key;
+    if (this->isCertificate()) {
+        const CKeyCert& ckc = static_cast<const CKeyCert&>(*this);
+        this_key = ckc.cert.publicKey().toDer();
+    }
+    if (other.isCertificate()) {
+        const CKeyCert& ckc = static_cast<const CKeyCert&>(other);
+        other_key = ckc.cert.publicKey().toDer();
+    }
+    if (this_key.isEmpty() || other_key.isEmpty()) return false;
+    return this_key == other_key;
+}
+
+bool
+CKey::isTheSameRecipient(const QSslCertificate &cert) const
+{
+    QByteArray this_key, other_key;
+    if (this->isCertificate()) {
+        const CKeyCert& ckc = static_cast<const CKeyCert&>(*this);
+        this_key = ckc.cert.publicKey().toDer();
+    }
+    other_key = cert.publicKey().toDer();
+    if (this_key.isEmpty() || other_key.isEmpty()) return false;
+    return this_key == other_key;
+}
+
+CKeyCert::CKeyCert(Type _type, const QSslCertificate &c)
+    : CKeyPKI(_type)
 {
 	setCert(c);
-	recipient = [](const SslCertificate &c) {
+    label = [](const SslCertificate &c) {
 		QString cn = c.subjectInfo(QSslCertificate::CommonName);
 		QString gn = c.subjectInfo("GN");
 		QString sn = c.subjectInfo("SN");
@@ -240,14 +269,17 @@ CKeyCD1::CKeyCD1(const QSslCertificate &c)
 	}(c);
 }
 
-std::shared_ptr<CKeyCD1>
-CKeyCD1::newEmpty() {
-	return std::shared_ptr<CKeyCD1>(new CKeyCD1());
+void CKeyCert::setCert(const QSslCertificate &c)
+{
+    cert = c;
+    QSslKey k = c.publicKey();
+    rcpt_key = Crypto::toPublicKeyDer(k);
+    pk_type = (k.algorithm() == QSsl::Rsa) ? PKType::RSA : PKType::ECC;
 }
 
 std::shared_ptr<CKeyCD1>
-CKeyCD1::fromKey(QByteArray _key, PKType _pk_type) {
-	return std::shared_ptr<CKeyCD1>(new CKeyCD1(_key, _pk_type));
+CKeyCD1::newEmpty() {
+	return std::shared_ptr<CKeyCD1>(new CKeyCD1());
 }
 
 std::shared_ptr<CKeyCD1>
@@ -346,7 +378,7 @@ bool CryptoDoc::addKey(std::shared_ptr<CKey> key )
 	if(d->isEncryptedWarning())
 		return false;
 	for (std::shared_ptr<CKey> k: d->cdoc->keys) {
-		if (*k == *key) {
+        if (k->isTheSameRecipient(*key)) {
 			WarningDialog::show(tr("Key already exists"));
 			return false;
 		}
@@ -398,7 +430,7 @@ bool CryptoDoc::decrypt(std::shared_ptr<CKey> key, const QByteArray& secret)
     if (key == nullptr) {
         key = d->cdoc->getDecryptionKey(qApp->signer()->tokenauth().cert());
     }
-    if((key == nullptr) || (key->key.isEmpty() && secret.isEmpty())) {
+    if((key == nullptr) || (key->isSymmetric() && secret.isEmpty())) {
 		WarningDialog::show(tr("You do not have the key to decrypt this document"));
 		return false;
 	}
@@ -519,6 +551,16 @@ bool CryptoDoc::saveCopy(const QString &filename)
 	if(QFile::exists(filename))
 		QFile::remove(filename);
 	return QFile::copy(d->fileName, filename);
+}
+
+bool
+CryptoDoc::encryptLT(const QString& label, const QByteArray& secret, unsigned int kdf_iter)
+{
+    if( d->fileName.isEmpty()) {
+        WarningDialog::show(tr("Container is not open"));
+        return false;
+    }
+    return CDoc2::save(d->fileName, d->cdoc->files, label, secret, kdf_iter);
 }
 
 #include "CryptoDoc.moc"

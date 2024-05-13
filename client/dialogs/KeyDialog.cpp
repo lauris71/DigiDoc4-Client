@@ -71,7 +71,7 @@ KeyDialog::KeyDialog( const CKey &k, QWidget *parent )
 	bool adjust_size = false;
 	if (k.type == CKey::Type::CDOC1) {
 		const CKeyCD1& cd1key = static_cast<const CKeyCD1&>(k);
-		addItem(tr("Recipient"), cd1key.recipient);
+		addItem(tr("Recipient"), cd1key.label);
 		addItem(tr("ConcatKDF digest method"), cd1key.concatDigest);
 		addItem(tr("Expiry date"), cd1key.cert.expiryDate().toLocalTime().toString(QStringLiteral("dd.MM.yyyy hh:mm:ss")));
         addItem(tr("Issuer"), SslCertificate(cd1key.cert).issuerInfo(QSslCertificate::CommonName));

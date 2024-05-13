@@ -118,4 +118,5 @@ private:
 	Ui::MainWindow *ui;
 
     void decryptClicked(std::shared_ptr<CKey> key);
+    void encryptLTClicked();
 };

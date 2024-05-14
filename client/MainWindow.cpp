@@ -345,6 +345,42 @@ bool MainWindow::encrypt(bool askForKey)
     }
 }
 
+bool
+MainWindow::encryptLT()
+{
+    qDebug() << "LT encrypt";
+    if (!cryptoDoc) return false;
+    if(!FileDialog::fileIsWritable(cryptoDoc->fileName())) {
+        auto *dlg = new WarningDialog(tr("Cannot alter container %1. Save different location?")
+                                          .arg(FileDialog::normalized(cryptoDoc->fileName())), this);
+        dlg->addButton(WarningDialog::YES, QMessageBox::Yes);
+        if(dlg->exec() == QMessageBox::Yes) {
+            moveCryptoContainer();
+            return encryptLT();
+        }
+        return false;
+    }
+    PasswordDialog p;
+    p.setMode(PasswordDialog::Mode::ENCRYPT, PasswordDialog::Type::PASSWORD);
+    if(!p.exec()) return false;
+    QString label = p.label();
+    QByteArray secret = p.secret();
+    bool result;
+    if (p.type == PasswordDialog::Type::PASSWORD) {
+        qDebug() << "Secret:" << QString::fromUtf8(secret);
+        WaitDialogHolder waitDialog(this, tr("Encrypting"));
+        result = cryptoDoc->encryptLT(label, secret, 65536);
+    } else {
+        qDebug() << "Secret:" << QString::fromUtf8(secret.toHex());
+        WaitDialogHolder waitDialog(this, tr("Encrypting"));
+        result = cryptoDoc->encryptLT(label, secret, 0);
+    }
+    if (result) {
+        FadeInNotification::success(ui->topBar, tr("Encryption succeeded!"));
+    }
+    return result;
+}
+
 void MainWindow::mouseReleaseEvent(QMouseEvent *event)
 {
 	emit clearPopups();
@@ -560,7 +596,7 @@ void MainWindow::onCryptoAction(int action, const QString &/*id*/, const QString
 		}
 		break;
     case EncryptLT:
-        if(encrypt(true))
+        if(encryptLT())
         {
             ui->cryptoContainerPage->transition(cryptoDoc, qApp->signer()->tokenauth().cert());
             FadeInNotification::success(ui->topBar, tr("Encryption succeeded!"));

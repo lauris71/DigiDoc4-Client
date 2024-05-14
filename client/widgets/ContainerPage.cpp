@@ -473,7 +473,6 @@ void ContainerPage::updatePanes(ria::qdigidoc4::ContainerState state, CryptoDoc 
 		ui->leftPane->init(fileName, QT_TRANSLATE_NOOP("ItemList", "Encrypted files"));
 		showRightPane(ItemAddress, QT_TRANSLATE_NOOP("ItemList", "Recipients"));
 		updateDecryptionButton();
-        setButtonsVisible({ ui->save, ui->summary }, false);
         setButtonsVisible({ ui->cancel, ui->convert, ui->saveAs, ui->email }, true);
 		break;
 	default:

@@ -113,6 +113,7 @@ protected:
 
 // Public key with additonal information
 // Usage:
+// CDoc2:encrypt - if recipient is specified by certificate
 // CDoc1:encrypt
 
 struct CKeyCert : public CKeyPKI {
@@ -151,6 +152,7 @@ struct CKeyPublicKey : public CKeyPKI {
     // Either ECC public key or RSA encrypted kek
     QByteArray key_material;
 
+    CKeyPublicKey() : CKeyPKI(Type::PUBLIC_KEY) {};
     CKeyPublicKey(PKType _pk_type, QByteArray _rcpt_key) : CKeyPKI(Type::PUBLIC_KEY, _pk_type, _rcpt_key) {};
 };
 
@@ -205,6 +207,7 @@ public:
 	void clear(const QString &file = {});
     bool decrypt(std::shared_ptr<CKey> key, const QByteArray& secret);
     bool encrypt(const QString &filename = {}, const QString& label = {}, const QByteArray& secret = {}, uint32_t kdf_iter = 0);
+    bool encryptLT(const QString& label, const QByteArray& secret, unsigned int kdf_iter);
     DocumentModel* documentModel() const;
     QString fileName() const;
 	QList<std::shared_ptr<CKey>> keys() const;

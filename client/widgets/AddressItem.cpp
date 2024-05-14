@@ -69,8 +69,8 @@ AddressItem::AddressItem(std::shared_ptr<CKey> key, QWidget *parent, bool showIc
         ui->label = key->label;
 	}
     if(ui->label.isEmpty() && ui->key->type == CKey::PUBLIC_KEY) {
-        std::shared_ptr<CKeyPKI> key = std::static_pointer_cast<CKeyPKI>(ui->key);
-        ui->label = ui->key->fromKeyLabel().value(QStringLiteral("cn"), key->label);
+        const CKeyPublicKey& pk = static_cast<const CKeyPublicKey&>(*ui->key);
+        ui->label = pk.fromKeyLabel().value(QStringLiteral("cn"), key->label);
 	}
 	setIdType();
 	showButton(AddressItem::Remove);

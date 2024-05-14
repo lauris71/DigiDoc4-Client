@@ -72,8 +72,8 @@ private:
 	void convertToCDoc();
 	ria::qdigidoc4::ContainerState currentState();
     void decrypt(std::shared_ptr<CKey> key);
-	bool encrypt();
-	void loadPicture();
+    bool encrypt(bool askForKey = false);
+    void loadPicture();
 	void moveCryptoContainer();
 	void moveSignatureContainer();
 	void navigateToPage( ria::qdigidoc4::Pages page, const QStringList &files = QStringList(), bool create = true );
@@ -118,5 +118,4 @@ private:
 	Ui::MainWindow *ui;
 
     void decryptClicked(std::shared_ptr<CKey> key);
-    void encryptLTClicked();
 };

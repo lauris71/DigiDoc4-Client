@@ -50,7 +50,7 @@ KeyDialog::KeyDialog( const CKey &k, QWidget *parent )
 
 	connect(d->close, &QPushButton::clicked, this, &KeyDialog::accept);
 	if (k.type == CKey::CDOC1) {
-		const CKeyCD1& kd = static_cast<const CKeyCD1&>(k);
+		const CKeyCDoc1& kd = static_cast<const CKeyCDoc1&>(k);
 		connect(d->showCert, &QPushButton::clicked, this, [this, cert=kd.cert] {
 			CertificateDetails::showCertificate(cert, this);
 		});
@@ -70,24 +70,16 @@ KeyDialog::KeyDialog( const CKey &k, QWidget *parent )
 
 	bool adjust_size = false;
 	if (k.type == CKey::Type::CDOC1) {
-		const CKeyCD1& cd1key = static_cast<const CKeyCD1&>(k);
+        const CKeyCDoc1& cd1key = static_cast<const CKeyCDoc1&>(k);
 		addItem(tr("Recipient"), cd1key.label);
 		addItem(tr("ConcatKDF digest method"), cd1key.concatDigest);
 		addItem(tr("Expiry date"), cd1key.cert.expiryDate().toLocalTime().toString(QStringLiteral("dd.MM.yyyy hh:mm:ss")));
         addItem(tr("Issuer"), SslCertificate(cd1key.cert).issuerInfo(QSslCertificate::CommonName));
 		d->view->resizeColumnToContents( 0 );
-	} else if (CKeyCD2::isCDoc2Key(k)) {
-		const CKeyCD2& cd2key = static_cast<const CKeyCD2&>(k);
-		addItem(tr("Label"), cd2key.label);
-		if (k.type == CKey::SERVER) {
-			const CKeyServer& sk = static_cast<const CKeyServer&>(k);
-			addItem(tr("Key server ID"), sk.keyserver_id);
-			addItem(tr("Transaction ID"), sk.transaction_id);
-		}
-    } else if (k.type == CKey::Type::SERVER) {
-        const CKeyServer& skey = static_cast<const CKeyServer&>(k);
-        addItem(tr("Key server ID"), skey.keyserver_id);
-        addItem(tr("Transaction ID"), skey.transaction_id);
+    } else if (k.type == CKey::SERVER) {
+        const CKeyServer& sk = static_cast<const CKeyServer&>(k);
+        addItem(tr("Key server ID"), sk.keyserver_id);
+        addItem(tr("Transaction ID"), sk.transaction_id);
     }
 	d->view->resizeColumnToContents( 0 );
 	adjustSize();

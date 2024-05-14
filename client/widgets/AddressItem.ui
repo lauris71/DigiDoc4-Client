@@ -66,7 +66,11 @@ QToolButton:disabled {
 color: #727679;
 }
 #decrypt {
-background-color: blue;
+color: white;
+background-color: #006EB5;
+}
+#decrypt:hover {
+background-color: #00AEE5;
 }
 </string>
   </property>
@@ -258,6 +262,11 @@ background-color: blue;
    <extends>QWidget</extends>
    <header location="global">QSvgWidget</header>
    <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>LabelButton</class>
+   <extends>QToolButton</extends>
+   <header>widgets/LabelButton.h</header>
   </customwidget>
  </customwidgets>
  <resources>

@@ -35,11 +35,11 @@ public:
 	bool yourself = false;
 };
 
-AddressItem::AddressItem(std::shared_ptr<CKey> k, QWidget *parent, bool showIcon)
+AddressItem::AddressItem(std::shared_ptr<CKey> key, QWidget *parent, bool showIcon)
 	: Item(parent)
 	, ui(new Private)
 {
-	ui->key = k;
+    ui->key = key;
 	ui->setupUi(this);
 	if(showIcon)
 		ui->icon->load(QStringLiteral(":/images/icon_Krypto_small.svg"));
@@ -51,21 +51,25 @@ AddressItem::AddressItem(std::shared_ptr<CKey> k, QWidget *parent, bool showIcon
 		setCursor(Qt::PointingHandCursor);
 
 	connect(ui->add, &QToolButton::clicked, this, [this]{ emit add(this);});
-    //connect(ui->remove, &LabelButton::clicked, this, [this]{ emit remove(this);});
-    connect(ui->decrypt, &QToolButton::clicked, this, [this]{ emit decrypt(ui->key);});
+    if (key->isSymmetric()) {
+        ui->decrypt->show();
+        connect(ui->decrypt, &QToolButton::clicked, this, [this]{ emit decrypt(ui->key);});
+    } else {
+        ui->decrypt->hide();
+    }
 
-	if (CKeyCD1::isCDoc1Key(*ui->key)) {
-		std::shared_ptr<CKeyCD1> key = std::static_pointer_cast<CKeyCD1>(ui->key);
-		ui->code = SslCertificate(key->cert).personalCode();
+    if (ui->key->isCDoc1()) {
+		std::shared_ptr<CKeyCDoc1> key = std::static_pointer_cast<CKeyCDoc1>(ui->key);
+		ui->code = SslCertificate(key->cert).personalCode().toHtmlEscaped();
 		ui->label = (!key->cert.subjectInfo("GN").isEmpty() && !key->cert.subjectInfo("SN").isEmpty() ?
 				key->cert.subjectInfo("GN").join(' ') + " " + key->cert.subjectInfo("SN").join(' ') :
 				key->cert.subjectInfo("CN").join(' '));
 	} else {
 		ui->code = {};
-        ui->label = k->label;
+        ui->label = key->label;
 	}
-	if(ui->label.isEmpty() && ui->key->type == CKey::PUBLICKEY) {
-        std::shared_ptr<CKeyPK> key = std::static_pointer_cast<CKeyPK>(ui->key);
+    if(ui->label.isEmpty() && ui->key->type == CKey::PUBLIC_KEY) {
+        std::shared_ptr<CKeyPKI> key = std::static_pointer_cast<CKeyPKI>(ui->key);
         ui->label = ui->key->fromKeyLabel().value(QStringLiteral("cn"), key->label);
 	}
 	setIdType();
@@ -93,16 +97,10 @@ const std::shared_ptr<CKey> AddressItem::getKey() const
 	return ui->key;
 }
 
-void AddressItem::idChanged(std::shared_ptr<CKey> key)
-{
-    ui->yourself = key->isTheSameRecipient(*ui->key);
-	setName();
-}
-
 void AddressItem::idChanged(const SslCertificate &cert)
 {
-    auto key = CKeyCD1::fromCertificate(cert);
-    ui->yourself = !key->key.isNull() && ui->key == key;
+    auto key = CKeyCDoc1::fromCertificate(cert);
+    ui->yourself = !key->rcpt_key.isNull() && ui->key == key;
     setName();
 }
 
@@ -202,10 +200,10 @@ void AddressItem::setIdType()
 			}
             if(!str.isEmpty())
                 str += QStringLiteral(" - ");
-            DateTime date(cert.expiryDate().toLocalTime());
+            QDateTime date(cert.expiryDate().toLocalTime());
             ui->idType->setText(QStringLiteral("%1%2 %3").arg(str,
                                                               cert.isValid() ? tr("Expires on") : tr("Expired on"),
-                                                              date.formatDate(QStringLiteral("dd. MMMM yyyy"))));
+                                                              date.toLocalTime().toString(QStringLiteral("dd. MMMM yyyy"))));
         } else {
             QString type = (pki->pk_type == CKey::PKType::RSA) ? "RSA" : "ECC";
             ui->idType->setHidden(false);

@@ -41,7 +41,7 @@ AddressItem::AddressItem(std::shared_ptr<CKey> key, QWidget *parent, bool showIc
 	: Item(parent)
 	, ui(new Private)
 {
-    ui->key = key;
+	ui->key = key;
 	ui->setupUi(this);
 	if(showIcon)
 		ui->icon->load(QStringLiteral(":/images/icon_Krypto_small.svg"));

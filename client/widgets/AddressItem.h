@@ -48,7 +48,7 @@ public:
 	void stateChange(ria::qdigidoc4::ContainerState state) final;
 
 signals:
-    void decrypt(std::shared_ptr<CKey> key);
+	void decrypt(std::shared_ptr<CKey> key);
 
 private:
 	void changeEvent(QEvent *event) final;

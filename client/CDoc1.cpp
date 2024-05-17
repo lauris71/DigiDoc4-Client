@@ -96,12 +96,12 @@ CDoc1::CDoc1(const QString &path)
 				{
 					QStringList fileparts = xml.readElementText().split('|');
 					files.push_back({
-						fileparts.value(0),
-						fileparts.value(3),
-						fileparts.value(2),
-						fileparts.value(1).toUInt(),
-						{}
-					});
+										fileparts.value(0),
+										fileparts.value(3),
+										fileparts.value(2),
+										fileparts.value(1).toUInt(),
+										{}
+									});
 				}
 				else
 					properties[attr.value().toString()] = xml.readElementText();
@@ -163,7 +163,7 @@ CDoc1::CDoc1(const QString &path)
 			else if(xml.name() == QLatin1String("CipherValue"))
 			{
 				xml.readNext();
-                key->encrypted_fmk = fromBase64(xml.text());
+				key->encrypted_fmk = fromBase64(xml.text());
 			}
 		}
 		keys.append(key);
@@ -174,12 +174,12 @@ CDoc1::CDoc1(const QString &path)
 	if(files.empty() && properties.contains(QStringLiteral("Filename")))
 	{
 		files.push_back({
-			properties.value(QStringLiteral("Filename")),
-			{},
-			mime == MIME_ZLIB ? properties.value(QStringLiteral("OriginalMimeType")) : mime,
-			properties.value(QStringLiteral("OriginalSize")).toUInt(),
-			{}
-		});
+							properties.value(QStringLiteral("Filename")),
+							{},
+							mime == MIME_ZLIB ? properties.value(QStringLiteral("OriginalMimeType")) : mime,
+							properties.value(QStringLiteral("OriginalSize")).toUInt(),
+							{}
+						});
 	}
 }
 
@@ -268,12 +268,12 @@ bool CDoc1::decryptPayload(const QByteArray &key)
 	else if(properties.contains(QStringLiteral("Filename")))
 	{
 		files.push_back({
-			properties.value(QStringLiteral("Filename")),
-			{},
-			mime,
-			data.size(),
-			std::move(buffer),
-		});
+							properties.value(QStringLiteral("Filename")),
+							{},
+							mime,
+							data.size(),
+							std::move(buffer),
+						});
 	}
 	else
 		return setLastError(CryptoDoc::tr("Error parsing document"));
@@ -285,7 +285,7 @@ CKey::DecryptionStatus
 CDoc1::canDecrypt(const QSslCertificate &cert) const
 {
 	std::shared_ptr<CKey> key = getDecryptionKey(cert);
-    if (key) return CKey::DecryptionStatus::CAN_DECRYPT;
+	if (key) return CKey::DecryptionStatus::CAN_DECRYPT;
 	return CKey::DecryptionStatus::CANNOT_DECRYPT;
 }
 
@@ -446,36 +446,36 @@ bool CDoc1::save(const QString &path)
 		if(!mime.isEmpty())
 			w.writeAttribute(QStringLiteral("MimeType"), mime);
 		writeElement(w, DENC, QStringLiteral("EncryptionMethod"), {
-			{QStringLiteral("Algorithm"), method},
-		});
+						 {QStringLiteral("Algorithm"), method},
+					 });
 		w.writeNamespace(DS, QStringLiteral("ds"));
 		writeElement(w, DS, QStringLiteral("KeyInfo"), [&]{
 			for(std::shared_ptr<CKey> key: qAsConst(keys))
 			{
-                // Only certificate-based keys can be used in CDoc1
-                if (key->type != CKey::Type::CERTIFICATE) return;
-                std::shared_ptr<CKeyCert> ckey = std::static_pointer_cast<CKeyCert>(key);
+				// Only certificate-based keys can be used in CDoc1
+				if (key->type != CKey::Type::CERTIFICATE) return;
+				std::shared_ptr<CKeyCert> ckey = std::static_pointer_cast<CKeyCert>(key);
 				writeElement(w, DENC, QStringLiteral("EncryptedKey"), [&]{
                     if(!ckey->label.isEmpty())
                         w.writeAttribute(QStringLiteral("Recipient"), ckey->label);
 					QByteArray cipher;
-                    if(ckey->pk_type == CKey::PKType::RSA)
+					if(ckey->pk_type == CKey::PKType::RSA)
 					{
-                        cipher = Crypto::encrypt(X509_get0_pubkey((const X509*)ckey->cert.handle()), RSA_PKCS1_PADDING, transportKey);
+						cipher = Crypto::encrypt(X509_get0_pubkey((const X509*)ckey->cert.handle()), RSA_PKCS1_PADDING, transportKey);
 						if(cipher.isEmpty())
 							return;
 						writeElement(w, DENC, QStringLiteral("EncryptionMethod"), {
-							{QStringLiteral("Algorithm"), RSA_MTH},
-						});
+										 {QStringLiteral("Algorithm"), RSA_MTH},
+									 });
 						writeElement(w, DS, QStringLiteral("KeyInfo"), [&]{
 							writeElement(w, DS, QStringLiteral("X509Data"), [&]{
-                                writeBase64Element(w, DS, QStringLiteral("X509Certificate"), ckey->cert.toDer());
+								writeBase64Element(w, DS, QStringLiteral("X509Certificate"), ckey->cert.toDer());
 							});
 						});
 					}
 					else
 					{
-                        EVP_PKEY *peerPKey = X509_get0_pubkey((const X509*)ckey->cert.handle());
+						EVP_PKEY *peerPKey = X509_get0_pubkey((const X509*)ckey->cert.handle());
 						auto priv = Crypto::genECKey(peerPKey);
 						QByteArray sharedSecret = Crypto::derive(priv.get(), peerPKey);
 						if(sharedSecret.isEmpty())
@@ -498,7 +498,7 @@ bool CDoc1::save(const QString &path)
 						qDebug() << "ENC ConcatKDF" << encryptionKey.toHex();
 #endif
 
-                        cipher = Crypto::aes_wrap(encryptionKey, transportKey);
+						cipher = Crypto::aes_wrap(encryptionKey, transportKey);
 						if(cipher.isEmpty())
 							return;
 
@@ -507,20 +507,20 @@ bool CDoc1::save(const QString &path)
 						});
 						writeElement(w, DS, QStringLiteral("KeyInfo"), [&]{
 							writeElement(w, DENC, QStringLiteral("AgreementMethod"), {
-								{QStringLiteral("Algorithm"), AGREEMENT_MTH},
-							}, [&]{
+											 {QStringLiteral("Algorithm"), AGREEMENT_MTH},
+										 }, [&]{
 								w.writeNamespace(XENC11, QStringLiteral("xenc11"));
 								writeElement(w, XENC11, QStringLiteral("KeyDerivationMethod"), {
-									{QStringLiteral("Algorithm"), CONCATKDF_MTH},
-								}, [&]{
+												 {QStringLiteral("Algorithm"), CONCATKDF_MTH},
+											 }, [&]{
 									writeElement(w, XENC11, QStringLiteral("ConcatKDFParams"), {
-										{QStringLiteral("AlgorithmID"), QStringLiteral("00") + props.value(QStringLiteral("DocumentFormat")).toUtf8().toHex()},
-										{QStringLiteral("PartyUInfo"), QStringLiteral("00") + SsDer.toHex()},
-                                        {QStringLiteral("PartyVInfo"), QStringLiteral("00") + ckey->cert.toDer().toHex()},
-									}, [&]{
+													 {QStringLiteral("AlgorithmID"), QStringLiteral("00") + props.value(QStringLiteral("DocumentFormat")).toUtf8().toHex()},
+													 {QStringLiteral("PartyUInfo"), QStringLiteral("00") + SsDer.toHex()},
+													 {QStringLiteral("PartyVInfo"), QStringLiteral("00") + ckey->cert.toDer().toHex()},
+												 }, [&]{
 										writeElement(w, DS, QStringLiteral("DigestMethod"), {
-											{QStringLiteral("Algorithm"), concatDigest},
-										});
+														 {QStringLiteral("Algorithm"), concatDigest},
+													 });
 									});
 								});
 								writeElement(w, DENC, QStringLiteral("OriginatorKeyInfo"), [&]{
@@ -528,15 +528,15 @@ bool CDoc1::save(const QString &path)
 										w.writeNamespace(DSIG11, QStringLiteral("dsig11"));
 										writeElement(w, DSIG11, QStringLiteral("ECKeyValue"), [&]{
 											writeElement(w, DSIG11, QStringLiteral("NamedCurve"), {
-												{QStringLiteral("URI"), QStringLiteral("urn:oid:") + oid},
-											});
+															 {QStringLiteral("URI"), QStringLiteral("urn:oid:") + oid},
+														 });
 											writeBase64Element(w, DSIG11, QStringLiteral("PublicKey"), SsDer);
 										});
 									});
 								});
 								writeElement(w, DENC, QStringLiteral("RecipientKeyInfo"), [&]{
 									writeElement(w, DS, QStringLiteral("X509Data"), [&]{
-                                        writeBase64Element(w, DS, QStringLiteral("X509Certificate"), ckey->cert.toDer());
+										writeBase64Element(w, DS, QStringLiteral("X509Certificate"), ckey->cert.toDer());
 									});
 								});
 							});
@@ -547,17 +547,17 @@ bool CDoc1::save(const QString &path)
 					});
 				});
 			}});
-        // This is actual content, for some weird reason named cipherData/cipherValue
+		// This is actual content, for some weird reason named cipherData/cipherValue
 		writeElement(w,DENC, QStringLiteral("CipherData"), [&]{
 			writeBase64Element(w, DENC, QStringLiteral("CipherValue"),
-				Crypto::cipher(ENC_MTH[method], transportKey, data.buffer(), true)
-			);
+							   Crypto::cipher(ENC_MTH[method], transportKey, data.buffer(), true)
+							   );
 		});
 		writeElement(w, DENC, QStringLiteral("EncryptionProperties"), [&]{
 			for(QMultiHash<QString,QString>::const_iterator i = props.constBegin(); i != props.constEnd(); ++i)
 				writeElement(w, DENC, QStringLiteral("EncryptionProperty"), {
-					{QStringLiteral("Name"), i.key()},
-				}, [&]{
+								 {QStringLiteral("Name"), i.key()},
+							 }, [&]{
 					w.writeCharacters(i.value());
 				});
 		});
@@ -588,10 +588,10 @@ QByteArray CDoc1::getFMK(const CKey &key, const QByteArray& secret)
 	if(ckey.pk_type == CKey::PKType::RSA)
 		return decryptedKey;
 #ifndef NDEBUG
-    qDebug() << "DEC Ss" << ckey.publicKey.toHex();
-	qDebug() << "DEC ConcatKDF" << decryptedKey.toHex();
+qDebug() << "DEC Ss" << ckey.publicKey.toHex();
+qDebug() << "DEC ConcatKDF" << decryptedKey.toHex();
 #endif
-    return Crypto::aes_unwrap(decryptedKey, ckey.encrypted_fmk);
+return Crypto::aes_unwrap(decryptedKey, ckey.encrypted_fmk);
 }
 
 int CDoc1::version()
@@ -622,20 +622,20 @@ void CDoc1::writeDDoc(QIODevice *ddoc)
 	x.writeDefaultNamespace(QStringLiteral("http://www.sk.ee/DigiDoc/v1.3.0#"));
 	x.writeStartElement(QStringLiteral("SignedDoc"));
 	writeAttributes(x, {
-		{QStringLiteral("format"), QStringLiteral("DIGIDOC-XML")},
-		{QStringLiteral("version"), QStringLiteral("1.3")},
-	});
+						{QStringLiteral("format"), QStringLiteral("DIGIDOC-XML")},
+						{QStringLiteral("version"), QStringLiteral("1.3")},
+					});
 
 	for(const File &file: qAsConst(files))
 	{
 		x.writeStartElement(QStringLiteral("DataFile"));
 		writeAttributes(x, {
-			{QStringLiteral("ContentType"), QStringLiteral("EMBEDDED_BASE64")},
-			{QStringLiteral("Filename"), file.name},
-			{QStringLiteral("Id"), file.id},
-			{QStringLiteral("MimeType"), file.mime},
-			{QStringLiteral("Size"), QString::number(file.size)},
-		});
+							{QStringLiteral("ContentType"), QStringLiteral("EMBEDDED_BASE64")},
+							{QStringLiteral("Filename"), file.name},
+							{QStringLiteral("Id"), file.id},
+							{QStringLiteral("MimeType"), file.mime},
+							{QStringLiteral("Size"), QString::number(file.size)},
+						});
 		std::array<char, 48> buf{};
 		file.data->seek(0);
 		for(auto size = file.data->read(buf.data(), buf.size()); size > 0; size = file.data->read(buf.data(), buf.size()))

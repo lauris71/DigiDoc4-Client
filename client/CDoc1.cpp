@@ -96,12 +96,12 @@ CDoc1::CDoc1(const QString &path)
 				{
 					QStringList fileparts = xml.readElementText().split('|');
 					files.push_back({
-										fileparts.value(0),
-										fileparts.value(3),
-										fileparts.value(2),
-										fileparts.value(1).toUInt(),
-										{}
-									});
+						fileparts.value(0),
+						fileparts.value(3),
+						fileparts.value(2),
+						fileparts.value(1).toUInt(),
+						{}
+					});
 				}
 				else
 					properties[attr.value().toString()] = xml.readElementText();
@@ -174,12 +174,12 @@ CDoc1::CDoc1(const QString &path)
 	if(files.empty() && properties.contains(QStringLiteral("Filename")))
 	{
 		files.push_back({
-							properties.value(QStringLiteral("Filename")),
-							{},
-							mime == MIME_ZLIB ? properties.value(QStringLiteral("OriginalMimeType")) : mime,
-							properties.value(QStringLiteral("OriginalSize")).toUInt(),
-							{}
-						});
+			properties.value(QStringLiteral("Filename")),
+			{},
+			mime == MIME_ZLIB ? properties.value(QStringLiteral("OriginalMimeType")) : mime,
+			properties.value(QStringLiteral("OriginalSize")).toUInt(),
+			{}
+		});
 	}
 }
 
@@ -268,12 +268,12 @@ bool CDoc1::decryptPayload(const QByteArray &key)
 	else if(properties.contains(QStringLiteral("Filename")))
 	{
 		files.push_back({
-							properties.value(QStringLiteral("Filename")),
-							{},
-							mime,
-							data.size(),
-							std::move(buffer),
-						});
+			properties.value(QStringLiteral("Filename")),
+			{},
+			mime,
+			data.size(),
+			std::move(buffer),
+		});
 	}
 	else
 		return setLastError(CryptoDoc::tr("Error parsing document"));
@@ -446,8 +446,8 @@ bool CDoc1::save(const QString &path)
 		if(!mime.isEmpty())
 			w.writeAttribute(QStringLiteral("MimeType"), mime);
 		writeElement(w, DENC, QStringLiteral("EncryptionMethod"), {
-						 {QStringLiteral("Algorithm"), method},
-					 });
+		 {QStringLiteral("Algorithm"), method},
+	 });
 		w.writeNamespace(DS, QStringLiteral("ds"));
 		writeElement(w, DS, QStringLiteral("KeyInfo"), [&]{
 			for(std::shared_ptr<CKey> key: qAsConst(keys))
@@ -465,8 +465,8 @@ bool CDoc1::save(const QString &path)
 						if(cipher.isEmpty())
 							return;
 						writeElement(w, DENC, QStringLiteral("EncryptionMethod"), {
-										 {QStringLiteral("Algorithm"), RSA_MTH},
-									 });
+						 {QStringLiteral("Algorithm"), RSA_MTH},
+					 });
 						writeElement(w, DS, QStringLiteral("KeyInfo"), [&]{
 							writeElement(w, DS, QStringLiteral("X509Data"), [&]{
 								writeBase64Element(w, DS, QStringLiteral("X509Certificate"), ckey->cert.toDer());

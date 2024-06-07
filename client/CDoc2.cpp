@@ -70,231 +70,217 @@ namespace cdoc20 {
 		});
 	}
 
-QNetworkRequest req(const QString &keyserver_id, const QString &transaction_id = {}) {
+	QNetworkRequest req(const QString &keyserver_id, const QString &transaction_id = {}) {
 #ifdef CONFIG_URL
-	QJsonObject list = Application::confValue(QLatin1String("CDOC2-CONF")).toObject();
-	QJsonObject data = list.value(keyserver_id).toObject();
-	QString url = transaction_id.isEmpty() ?
-				data.value(QLatin1String("POST")).toString(Settings::CDOC2_POST) :
-				data.value(QLatin1String("FETCH")).toString(Settings::CDOC2_GET);
+		QJsonObject list = Application::confValue(QLatin1String("CDOC2-CONF")).toObject();
+		QJsonObject data = list.value(keyserver_id).toObject();
+		QString url = transaction_id.isEmpty() ?
+			data.value(QLatin1String("POST")).toString(Settings::CDOC2_POST) :
+			data.value(QLatin1String("FETCH")).toString(Settings::CDOC2_GET);
 #else
-	QString url = transaction_id.isEmpty() ? Settings::CDOC2_POST : Settings::CDOC2_GET;
+		QString url = transaction_id.isEmpty() ? Settings::CDOC2_POST : Settings::CDOC2_GET;
 #endif
-	if(url.isEmpty())
-		return QNetworkRequest{};
-	QNetworkRequest req(QStringLiteral("%1/key-capsules%2").arg(url,
-																transaction_id.isEmpty() ? QString(): QStringLiteral("/%1").arg(transaction_id)));
-	req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
-	return req;
-}
+		if(url.isEmpty())
+			return QNetworkRequest{};
+		QNetworkRequest req(QStringLiteral("%1/key-capsules%2").arg(url,
+			transaction_id.isEmpty() ? QString(): QStringLiteral("/%1").arg(transaction_id)));
+		req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+		return req;
+	}
 
-struct stream final: public QIODevice
-{
-	static constexpr qint64 CHUNK = 16LL * 1024LL;
-	QIODevice *io {};
-	Crypto::Cipher *cipher {};
-	z_stream s {};
-	QByteArray buf;
-	int flush = Z_NO_FLUSH;
-
-	stream(QIODevice *_io, Crypto::Cipher *_cipher)
-		: io(_io)
-		, cipher(_cipher)
+	struct stream final: public QIODevice
 	{
-		if(io->isReadable())
+		static constexpr qint64 CHUNK = 16LL * 1024LL;
+		QIODevice *io {};
+		Crypto::Cipher *cipher {};
+		z_stream s {};
+		QByteArray buf;
+		int flush = Z_NO_FLUSH;
+
+		stream(QIODevice *_io, Crypto::Cipher *_cipher)
+			: io(_io)
+			, cipher(_cipher)
 		{
-			if(inflateInit2(&s, MAX_WBITS) == Z_OK)
-				open(QIODevice::ReadOnly);
+			if(io->isReadable())
+			{
+				if(inflateInit2(&s, MAX_WBITS) == Z_OK)
+					open(QIODevice::ReadOnly);
+			}
+			if(io->isWritable())
+			{
+				if(deflateInit(&s, Z_DEFAULT_COMPRESSION) == Z_OK)
+					open(QIODevice::WriteOnly);
+			}
 		}
-		if(io->isWritable())
+
+		~stream() final
 		{
-			if(deflateInit(&s, Z_DEFAULT_COMPRESSION) == Z_OK)
-				open(QIODevice::WriteOnly);
+			if(io->isReadable())
+				inflateEnd(&s);
+			if(io->isWritable())
+			{
+				flush = Z_FINISH;
+				writeData(nullptr, 0);
+				deflateEnd(&s);
+			}
 		}
-	}
 
-	~stream() final
-	{
-		if(io->isReadable())
-			inflateEnd(&s);
-		if(io->isWritable())
+		bool isSequential() const final
 		{
-			flush = Z_FINISH;
-			writeData(nullptr, 0);
-			deflateEnd(&s);
+			return true;
 		}
-	}
 
-	bool isSequential() const final
-	{
-		return true;
-	}
-
-	qint64 bytesAvailable() const final
-	{
-		return (io->bytesAvailable() -  Crypto::Cipher::tagLen()) + buf.size() + QIODevice::bytesAvailable();
-	}
-
-	qint64 readData(char *data, qint64 maxlen) final
-	{
-		s.next_out = (Bytef*)data;
-		s.avail_out = uInt(maxlen);
-		std::array<char,CHUNK> in{};
-		for(int res = Z_OK; s.avail_out > 0 && res == Z_OK;)
+		qint64 bytesAvailable() const final
 		{
-			if(auto insize = io->bytesAvailable() -  Crypto::Cipher::tagLen(),
+			return (io->bytesAvailable() -  Crypto::Cipher::tagLen()) + buf.size() + QIODevice::bytesAvailable();
+		}
+
+		qint64 readData(char *data, qint64 maxlen) final
+		{
+			s.next_out = (Bytef*)data;
+			s.avail_out = uInt(maxlen);
+			std::array<char,CHUNK> in{};
+			for(int res = Z_OK; s.avail_out > 0 && res == Z_OK;)
+			{
+				if(auto insize = io->bytesAvailable() -  Crypto::Cipher::tagLen(),
 					size = io->read(in.data(), qMin<qint64>(insize, in.size())); size > 0)
-			{
-				if(!cipher->update(in.data(), int(size)))
-					return -1;
-				buf.append(in.data(), size);
+				{
+					if(!cipher->update(in.data(), int(size)))
+						return -1;
+					buf.append(in.data(), size);
+				}
+				s.next_in = (z_const Bytef*)buf.data();
+				s.avail_in = uInt(buf.size());
+				switch(res = inflate(&s, flush))
+				{
+				case Z_OK:
+					buf = buf.right(s.avail_in);
+					break;
+				case Z_STREAM_END:
+					buf.clear();
+					break;
+				default: return -1;
+				}
 			}
-			s.next_in = (z_const Bytef*)buf.data();
-			s.avail_in = uInt(buf.size());
-			switch(res = inflate(&s, flush))
-			{
-			case Z_OK:
-				buf = buf.right(s.avail_in);
-				break;
-			case Z_STREAM_END:
-				buf.clear();
-				break;
-			default: return -1;
-			}
+			return qint64(maxlen - s.avail_out);
 		}
-		return qint64(maxlen - s.avail_out);
-	}
 
-	qint64 writeData(const char *data, qint64 len) final
-	{
-		s.next_in = (z_const Bytef *)data;
-		s.avail_in = uInt(len);
-		std::array<char,CHUNK> out{};
-		while(true) {
-			s.next_out = (Bytef *)out.data();
-			s.avail_out = out.size();
-			int res = deflate(&s, flush);
-			if(res == Z_STREAM_ERROR)
-				return -1;
-			if(auto size = out.size() - s.avail_out; size > 0)
-			{
-				if(!cipher->update(out.data(), int(size)) ||
-						io->write(out.data(), size) != size)
-					return -1;
-			}
-			if(res == Z_STREAM_END)
-				break;
-			if(flush == Z_FINISH)
-				continue;
-			if(s.avail_in == 0)
-				break;
-		}
-		return len;
-	}
-};
-
-struct TAR {
-	std::unique_ptr<QIODevice> io;
-	explicit TAR(std::unique_ptr<QIODevice> &&in)
-		: io(std::move(in))
-	{}
-
-	bool save(const std::vector<CDoc::File> &files)
-	{
-		auto writeHeader = [this](Header &h, qint64 size) {
-			h.chksum.fill(' ');
-			toOctal(h.size, size);
-			toOctal(h.chksum, h.checksum().first);
-			return io->write((const char*)&h, Header::Size) == Header::Size;
-		};
-		auto writePadding = [this](qint64 size) {
-			QByteArray pad(padding(size), 0);
-			return io->write(pad) == pad.size();
-		};
-		auto toPaxRecord = [](const QByteArray &keyword, const QByteArray &value) {
-			QByteArray record = ' ' + keyword + '=' + value + '\n';
-			QByteArray result;
-			for(auto len = record.size(); result.size() != len; ++len)
-				result = QByteArray::number(len + 1) + record;
-			return result;
-		};
-		for(const CDoc::File &file: files)
+		qint64 writeData(const char *data, qint64 len) final
 		{
-			Header h {};
-			QByteArray filename = file.name.toUtf8();
-			QByteArray filenameTruncated = filename.left(h.name.size());
-			std::copy(filenameTruncated.cbegin(), filenameTruncated.cend(), h.name.begin());
+			s.next_in = (z_const Bytef *)data;
+			s.avail_in = uInt(len);
+			std::array<char,CHUNK> out{};
+			while(true) {
+				s.next_out = (Bytef *)out.data();
+				s.avail_out = out.size();
+				int res = deflate(&s, flush);
+				if(res == Z_STREAM_ERROR)
+					return -1;
+				if(auto size = out.size() - s.avail_out; size > 0)
+				{
+					if(!cipher->update(out.data(), int(size)) ||
+						io->write(out.data(), size) != size)
+						return -1;
+				}
+				if(res == Z_STREAM_END)
+					break;
+				if(flush == Z_FINISH)
+					continue;
+				if(s.avail_in == 0)
+					break;
+			}
+			return len;
+		}
+	};
 
-			if(filename.size() > 100 ||
-					file.size > 07777777)
+	struct TAR {
+		std::unique_ptr<QIODevice> io;
+		explicit TAR(std::unique_ptr<QIODevice> &&in)
+			: io(std::move(in))
+		{}
+
+		bool save(const std::vector<CDoc::File> &files)
+		{
+			auto writeHeader = [this](Header &h, qint64 size) {
+				h.chksum.fill(' ');
+				toOctal(h.size, size);
+				toOctal(h.chksum, h.checksum().first);
+				return io->write((const char*)&h, Header::Size) == Header::Size;
+			};
+			auto writePadding = [this](qint64 size) {
+				QByteArray pad(padding(size), 0);
+				return io->write(pad) == pad.size();
+			};
+			auto toPaxRecord = [](const QByteArray &keyword, const QByteArray &value) {
+				QByteArray record = ' ' + keyword + '=' + value + '\n';
+				QByteArray result;
+				for(auto len = record.size(); result.size() != len; ++len)
+					result = QByteArray::number(len + 1) + record;
+				return result;
+			};
+			for(const CDoc::File &file: files)
 			{
-				h.typeflag = 'x';
-				QByteArray paxData;
-				if(filename.size() > 100)
-					paxData += toPaxRecord("path", filename);
-				if(file.size > 07777777)
-					paxData += toPaxRecord("size", QByteArray::number(file.size));
-				if(!writeHeader(h, paxData.size()) ||
+				Header h {};
+				QByteArray filename = file.name.toUtf8();
+				QByteArray filenameTruncated = filename.left(h.name.size());
+				std::copy(filenameTruncated.cbegin(), filenameTruncated.cend(), h.name.begin());
+
+				if(filename.size() > 100 ||
+					file.size > 07777777)
+				{
+					h.typeflag = 'x';
+					QByteArray paxData;
+					if(filename.size() > 100)
+						paxData += toPaxRecord("path", filename);
+					if(file.size > 07777777)
+						paxData += toPaxRecord("size", QByteArray::number(file.size));
+					if(!writeHeader(h, paxData.size()) ||
 						io->write(paxData) != paxData.size() ||
 						!writePadding(paxData.size()))
+						return false;
+				}
+
+				h.typeflag = '0';
+				if(!writeHeader(h, file.size))
+					return false;
+				file.data->seek(0);
+				if(auto size = copyIODevice(file.data.get(), io.get()); size < 0 || !writePadding(size))
 					return false;
 			}
-
-			h.typeflag = '0';
-			if(!writeHeader(h, file.size))
-				return false;
-			file.data->seek(0);
-			if(auto size = copyIODevice(file.data.get(), io.get()); size < 0 || !writePadding(size))
-				return false;
-		}
-		return io->write((const char*)&Header::Empty, Header::Size) == Header::Size &&
+			return io->write((const char*)&Header::Empty, Header::Size) == Header::Size &&
 				io->write((const char*)&Header::Empty, Header::Size) == Header::Size;
-	}
+		}
 
-	std::vector<CDoc::File> files(bool &warning) const
-	{
-		std::vector<CDoc::File> result;
-		Header h {};
-		auto readHeader = [&h, this] { return io->read((char*)&h, Header::Size) == Header::Size; };
-		while(io->bytesAvailable() > 0)
+		std::vector<CDoc::File> files(bool &warning) const
 		{
-			if(!readHeader())
-				return {};
-			if(h.isNull())
+			std::vector<CDoc::File> result;
+			Header h {};
+			auto readHeader = [&h, this] { return io->read((char*)&h, Header::Size) == Header::Size; };
+			while(io->bytesAvailable() > 0)
 			{
-				if(!readHeader() && !h.isNull())
+				if(!readHeader())
 					return {};
-				warning = io->bytesAvailable() > 0;
-				return result;
-			}
-			if(!h.verify())
-				return {};
-
-			CDoc::File f;
-			f.name = QString::fromUtf8(h.name.data(), std::min<int>(h.name.size(), int(strlen(h.name.data()))));
-			f.size = fromOctal(h.size);
-			if(h.typeflag == 'x')
-			{
-				QByteArray paxData = io->read(f.size);
-				if(paxData.size() != f.size)
-					return {};
-				io->skip(padding(f.size));
-				if(!readHeader() || h.isNull() || !h.verify())
-					return {};
-				f.size = fromOctal(h.size);
-				for(const QByteArray &data: paxData.split('\n'))
+				if(h.isNull())
 				{
-					if(data.isEmpty())
-						break;
-					const auto &headerValue = data.split('=');
-					const auto &lenKeyword = headerValue[0].split(' ');
-					if(data.size() + 1 != lenKeyword[0].toUInt())
+					if(!readHeader() && !h.isNull())
+						return {};
+					warning = io->bytesAvailable() > 0;
+					return result;
+				}
+				if(!h.verify())
+					return {};
+
+				CDoc::File f;
+				f.name = QString::fromUtf8(h.name.data(), std::min<int>(h.name.size(), int(strlen(h.name.data()))));
+				f.size = fromOctal(h.size);
+				if(h.typeflag == 'x')
+				{
+					QByteArray paxData = io->read(f.size);
+					if(paxData.size() != f.size)
 						return {};
 					io->skip(padding(f.size));
 					if(!readHeader() || h.isNull() || !h.verify())
 						return {};
-					if(f.name.startsWith(QLatin1String("./PaxHeaders.X")))
-						f.name = QString::fromUtf8(h.name.data(), std::min<int>(h.name.size(), int(strlen(h.name.data()))));
 					f.size = fromOctal(h.size);
 					for(const QByteArray &data: paxData.split('\n'))
 					{
@@ -310,108 +296,107 @@ struct TAR {
 							f.size = headerValue[1].toUInt();
 					}
 				}
-			}
 
-			if(h.typeflag == '0' || h.typeflag == 0)
-			{
-				if(f.size > 500L * 1024L * 1024L)
-					f.data = std::make_unique<QTemporaryFile>();
+				if(h.typeflag == '0' || h.typeflag == 0)
+				{
+					if(f.size > 500L * 1024L * 1024L)
+						f.data = std::make_unique<QTemporaryFile>();
+					else
+						f.data = std::make_unique<QBuffer>();
+					f.data->open(QIODevice::ReadWrite);
+					if(f.size != copyIODevice(io.get(), f.data.get(), f.size))
+						return {};
+					io->skip(padding(f.size));
+					result.push_back(std::move(f));
+				}
 				else
-					f.data = std::make_unique<QBuffer>();
-				f.data->open(QIODevice::ReadWrite);
-				if(f.size != copyIODevice(io.get(), f.data.get(), f.size))
-					return {};
-				io->skip(padding(f.size));
-				result.push_back(std::move(f));
+					io->skip(f.size + padding(f.size));
 			}
-			else
-				io->skip(f.size + padding(f.size));
+			return result;
 		}
-		return result;
-	}
 
-private:
-	struct Header {
-		std::array<char,100> name;
-		std::array<char,  8> mode;
-		std::array<char,  8> uid;
-		std::array<char,  8> gid;
-		std::array<char, 12> size;
-		std::array<char, 12> mtime;
-		std::array<char,  8> chksum;
-		char typeflag;
-		std::array<char,100> linkname;
-		std::array<char,  6> magic;
-		std::array<char,  2> version;
-		std::array<char, 32> uname;
-		std::array<char, 32> gname;
-		std::array<char,  8> devmajor;
-		std::array<char,  8> devminor;
-		std::array<char,155> prefix;
-		std::array<char, 12> padding;
+	private:
+		struct Header {
+			std::array<char,100> name;
+			std::array<char,  8> mode;
+			std::array<char,  8> uid;
+			std::array<char,  8> gid;
+			std::array<char, 12> size;
+			std::array<char, 12> mtime;
+			std::array<char,  8> chksum;
+			char typeflag;
+			std::array<char,100> linkname;
+			std::array<char,  6> magic;
+			std::array<char,  2> version;
+			std::array<char, 32> uname;
+			std::array<char, 32> gname;
+			std::array<char,  8> devmajor;
+			std::array<char,  8> devminor;
+			std::array<char,155> prefix;
+			std::array<char, 12> padding;
 
-		std::pair<int64_t,int64_t> checksum() const
+			std::pair<int64_t,int64_t> checksum() const
+			{
+				int64_t unsignedSum = 0;
+				int64_t signedSum = 0;
+				for (size_t i = 0, size = sizeof(Header); i < size; i++) {
+					unsignedSum += ((unsigned char*) this)[i];
+					signedSum += ((signed char*) this)[i];
+				}
+				return {unsignedSum, signedSum};
+			}
+
+			bool isNull() {
+				return memcmp(this, &Empty, sizeof(Header)) == 0;
+			}
+
+			bool verify() {
+				auto copy = chksum;
+				chksum.fill(' ');
+				auto checkSum = checksum();
+				chksum.swap(copy);
+				int64_t referenceChecksum = fromOctal(chksum);
+				return referenceChecksum == checkSum.first ||
+					   referenceChecksum == checkSum.second;
+			}
+
+			static const Header Empty;
+			static const int Size;
+		};
+
+		template<std::size_t SIZE>
+		static int64_t fromOctal(const std::array<char,SIZE> &data)
 		{
-			int64_t unsignedSum = 0;
-			int64_t signedSum = 0;
-			for (size_t i = 0, size = sizeof(Header); i < size; i++) {
-				unsignedSum += ((unsigned char*) this)[i];
-				signedSum += ((signed char*) this)[i];
+			int64_t i = 0;
+			for(const char c: data)
+			{
+				if(c < '0' || c > '7')
+					continue;
+				i <<= 3;
+				i += c - '0';
 			}
-			return {unsignedSum, signedSum};
+			return i;
 		}
 
-		bool isNull() {
-			return memcmp(this, &Empty, sizeof(Header)) == 0;
+		template<std::size_t SIZE>
+		static void toOctal(std::array<char,SIZE> &data, int64_t value)
+		{
+			data.fill(' ');
+			for(auto it = data.rbegin() + 1; it != data.rend(); ++it)
+			{
+				*it = char(value & 7) + '0';
+				value >>= 3;
+			}
 		}
 
-		bool verify() {
-			auto copy = chksum;
-			chksum.fill(' ');
-			auto checkSum = checksum();
-			chksum.swap(copy);
-			int64_t referenceChecksum = fromOctal(chksum);
-			return referenceChecksum == checkSum.first ||
-					referenceChecksum == checkSum.second;
+		static constexpr int padding(int64_t size)
+		{
+			return Header::Size - size % Header::Size;
 		}
-
-		static const Header Empty;
-		static const int Size;
 	};
 
-	template<std::size_t SIZE>
-	static int64_t fromOctal(const std::array<char,SIZE> &data)
-	{
-		int64_t i = 0;
-		for(const char c: data)
-		{
-			if(c < '0' || c > '7')
-				continue;
-			i <<= 3;
-			i += c - '0';
-		}
-		return i;
-	}
-
-	template<std::size_t SIZE>
-	static void toOctal(std::array<char,SIZE> &data, int64_t value)
-	{
-		data.fill(' ');
-		for(auto it = data.rbegin() + 1; it != data.rend(); ++it)
-		{
-			*it = char(value & 7) + '0';
-			value >>= 3;
-		}
-	}
-
-	static constexpr int padding(int64_t size)
-	{
-		return Header::Size - size % Header::Size;
-	}
-};
-
-const TAR::Header TAR::Header::Empty {};
-const int TAR::Header::Size = int(sizeof(TAR::Header));
+	const TAR::Header TAR::Header::Empty {};
+	const int TAR::Header::Size = int(sizeof(TAR::Header));
 }
 
 bool
@@ -433,8 +418,8 @@ CDoc2::CDoc2(const QString &_path)
 	uint32_t header_len = 0;
 	QFile ifs(path);
 	if(!ifs.open(QFile::ReadOnly) ||
-			ifs.read(LABEL.length()) != LABEL ||
-			ifs.read((char*)&header_len, int(sizeof(header_len))) != int(sizeof(header_len)))
+		ifs.read(LABEL.length()) != LABEL ||
+		ifs.read((char*)&header_len, int(sizeof(header_len))) != int(sizeof(header_len)))
 		return;
 	header_data = ifs.read(qFromBigEndian<uint32_t>(header_len));
 	if(header_data.size() != qFromBigEndian<uint32_t>(header_len))
@@ -649,40 +634,40 @@ bool CDoc2::save(const QString &_path)
 		return builder.CreateString(utf8.data(), size_t(utf8.length()));
 	};
 
-	auto sendToServer = [this] (const QString& keyserver_id, const QByteArray &recipient_id, const QByteArray &key_material, QLatin1String type) -> QString {
-		if(keyserver_id.isEmpty()) {
-			setLastError(QStringLiteral("keyserver_id cannot be empty"));
-			return {};
-		}
-		QNetworkRequest req = cdoc20::req(keyserver_id);
-		if(req.url().isEmpty()) {
-			setLastError(QStringLiteral("No valid config found for keyserver_id: %1").arg(keyserver_id));
-			return {};
-		}
-		if(!cdoc20::checkConnection()) {
-			return {};
-		}
+    auto sendToServer = [this] (const QString& keyserver_id, const QByteArray &recipient_id, const QByteArray &key_material, QLatin1String type) -> QString {
+        if(keyserver_id.isEmpty()) {
+            setLastError(QStringLiteral("keyserver_id cannot be empty"));
+            return {};
+        }
+        QNetworkRequest req = cdoc20::req(keyserver_id);
+        if(req.url().isEmpty()) {
+            setLastError(QStringLiteral("No valid config found for keyserver_id: %1").arg(keyserver_id));
+            return {};
+        }
+        if(!cdoc20::checkConnection()) {
+            return {};
+        }
 		QScopedPointer<QNetworkAccessManager,QScopedPointerDeleteLater> nam(CheckConnection::setupNAM(req, Settings::CDOC2_POST_CERT));
 		req.setRawHeader("x-expiry-time", QDateTime::currentDateTimeUtc().addMonths(6).toString(Qt::ISODate).toLatin1());
 		QEventLoop e;
 		QNetworkReply *reply = nam->post(req, QJsonDocument({
-																{QLatin1String("recipient_id"), QLatin1String(recipient_id.toBase64())},
-																{QLatin1String("ephemeral_key_material"), QLatin1String(key_material.toBase64())},
-																{QLatin1String("capsule_type"), type},
-															}).toJson());
+			{QLatin1String("recipient_id"), QLatin1String(recipient_id.toBase64())},
+			{QLatin1String("ephemeral_key_material"), QLatin1String(key_material.toBase64())},
+			{QLatin1String("capsule_type"), type},
+		}).toJson());
 		connect(reply, &QNetworkReply::finished, &e, &QEventLoop::quit);
 		e.exec();
 		QString transaction_id;
 		if(reply->error() == QNetworkReply::NoError &&
-				reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 201) {
-			transaction_id = QString::fromLatin1(reply->rawHeader("Location")).remove(QLatin1String("/key-capsules/"));
-		} else {
-			setLastError(reply->errorString());
-			return {};
-		}
-		if(transaction_id.isEmpty())
-			setLastError(QStringLiteral("Failed to post key capsule"));
-		return transaction_id;
+            reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 201) {
+            transaction_id = QString::fromLatin1(reply->rawHeader("Location")).remove(QLatin1String("/key-capsules/"));
+        } else {
+            setLastError(reply->errorString());
+            return {};
+        }
+        if(transaction_id.isEmpty())
+            setLastError(QStringLiteral("Failed to post key capsule"));
+        return transaction_id;
 	};
 
 	for(std::shared_ptr<CKey> key: keys) {
@@ -703,36 +688,36 @@ bool CDoc2::save(const QString &_path)
 			qDebug() << "xor" << xor_key.toHex();
 			qDebug() << "encrytpedKek" << encrytpedKek.toHex();
 #endif
-			if(!Settings::CDOC2_USE_KEYSERVER) {
-				auto rsaPublicKey = cdoc20::recipients::CreateRSAPublicKeyCapsule(builder,
-																				  toVector(pki.rcpt_key), toVector(encrytpedKek));
-				auto offs = cdoc20::header::CreateRecipientRecord(builder,
-																  cdoc20::recipients::Capsule::RSAPublicKeyCapsule, rsaPublicKey.Union(),
-																  toString(pki.label), toVector(xor_key), cdoc20::header::FMKEncryptionMethod::XOR);
-				recipients.push_back(offs);
-			} else {
-				QString keyserver_id = Settings::CDOC2_DEFAULT_KEYSERVER;
-				QString transaction_id = sendToServer(keyserver_id, pki.rcpt_key, encrytpedKek, QLatin1String("rsa"));
-				if (transaction_id.isEmpty()) return false;
-				auto rsaKeyServer = cdoc20::recipients::CreateRsaKeyDetails(builder, toVector(pki.rcpt_key));
-				auto keyServer = cdoc20::recipients::CreateKeyServerCapsule(builder,
-																			cdoc20::recipients::KeyDetailsUnion::RsaKeyDetails,
-																			rsaKeyServer.Union(), toString(keyserver_id), toString(transaction_id));
-				auto offs = cdoc20::header::CreateRecipientRecord(builder,
-																  cdoc20::recipients::Capsule::KeyServerCapsule, keyServer.Union(),
-																  toString(pki.label), toVector(xor_key), cdoc20::header::FMKEncryptionMethod::XOR);
-				recipients.push_back(offs);
-			}
-		} else {
-			auto publicKey = Crypto::fromECPublicKeyDer(pki.rcpt_key, NID_secp384r1);
-			if(!publicKey) return false;
-			auto ephKey = Crypto::genECKey(publicKey.get());
-			QByteArray sharedSecret = Crypto::derive(ephKey.get(), publicKey.get());
-			QByteArray ephPublicKeyDer = Crypto::toPublicKeyDer(ephKey.get());
-			QByteArray kekPm = Crypto::extract(sharedSecret, KEKPREMASTER);
-			QByteArray info = KEK + cdoc20::header::EnumNameFMKEncryptionMethod(cdoc20::header::FMKEncryptionMethod::XOR) + pki.rcpt_key + ephPublicKeyDer;
-			QByteArray kek = Crypto::expand(kekPm, info, fmk.size());
-			QByteArray xor_key = Crypto::xor_data(fmk, kek);
+            if(!Settings::CDOC2_USE_KEYSERVER) {
+                auto rsaPublicKey = cdoc20::recipients::CreateRSAPublicKeyCapsule(builder,
+                                                                                  toVector(pki.rcpt_key), toVector(encrytpedKek));
+                auto offs = cdoc20::header::CreateRecipientRecord(builder,
+                                                                  cdoc20::recipients::Capsule::RSAPublicKeyCapsule, rsaPublicKey.Union(),
+                                                                  toString(pki.label), toVector(xor_key), cdoc20::header::FMKEncryptionMethod::XOR);
+                recipients.push_back(offs);
+            } else {
+                QString keyserver_id = Settings::CDOC2_DEFAULT_KEYSERVER;
+                QString transaction_id = sendToServer(keyserver_id, pki.rcpt_key, encrytpedKek, QLatin1String("rsa"));
+                if (transaction_id.isEmpty()) return false;
+                auto rsaKeyServer = cdoc20::recipients::CreateRsaKeyDetails(builder, toVector(pki.rcpt_key));
+                auto keyServer = cdoc20::recipients::CreateKeyServerCapsule(builder,
+                                                                            cdoc20::recipients::KeyDetailsUnion::RsaKeyDetails,
+                                                                            rsaKeyServer.Union(), toString(keyserver_id), toString(transaction_id));
+                auto offs = cdoc20::header::CreateRecipientRecord(builder,
+                                                                  cdoc20::recipients::Capsule::KeyServerCapsule, keyServer.Union(),
+                                                                  toString(pki.label), toVector(xor_key), cdoc20::header::FMKEncryptionMethod::XOR);
+                recipients.push_back(offs);
+            }
+        } else {
+            auto publicKey = Crypto::fromECPublicKeyDer(pki.rcpt_key, NID_secp384r1);
+            if(!publicKey) return false;
+            auto ephKey = Crypto::genECKey(publicKey.get());
+            QByteArray sharedSecret = Crypto::derive(ephKey.get(), publicKey.get());
+            QByteArray ephPublicKeyDer = Crypto::toPublicKeyDer(ephKey.get());
+            QByteArray kekPm = Crypto::extract(sharedSecret, KEKPREMASTER);
+            QByteArray info = KEK + cdoc20::header::EnumNameFMKEncryptionMethod(cdoc20::header::FMKEncryptionMethod::XOR) + pki.rcpt_key + ephPublicKeyDer;
+            QByteArray kek = Crypto::expand(kekPm, info, fmk.size());
+            QByteArray xor_key = Crypto::xor_data(fmk, kek);
 #ifndef NDEBUG
 			qDebug() << "publicKeyDer" << pki.rcpt_key.toHex();
 			qDebug() << "ephPublicKeyDer" << ephPublicKeyDer.toHex();
@@ -1020,11 +1005,11 @@ QByteArray CDoc2::getFMK(const CKey &key, const QByteArray& secret)
 	qDebug() << "hhk" << hhk.toHex();
 	qDebug() << "hmac" << headerHMAC.toHex();
 #endif
-	if(Crypto::sign_hmac(hhk, header_data) != headerHMAC) {
-		setLastError(QStringLiteral("CDoc 2.0 hash mismatch"));
-		return {};
-	}
-	return fmk;
+    if(Crypto::sign_hmac(hhk, header_data) != headerHMAC) {
+        setLastError(QStringLiteral("CDoc 2.0 hash mismatch"));
+        return {};
+    }
+    return fmk;
 }
 
 int CDoc2::version()

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 if(NOT EXISTS ${CMAKE_SOURCE_DIR}/cmake/modules/VersionInfo.cmake)
-	message(FATAL_ERROR "cmake submodule directory empty, did you 'git clone --recursive'?")
+    message(FATAL_ERROR "cmake submodule directory empty, did you 'git clone --recursive'?")
 endif()
 project(qdigidoc4 VERSION 4.6.0)
 
@@ -12,7 +12,7 @@ include( GNUInstallDirs )
 include( VersionInfo )
 
 find_package( PKCS11 )
-find_package(LibDigiDocpp 3.17.0 REQUIRED)
+find_package(LibDigiDocpp 4.0.0 REQUIRED)
 find_package( LDAP REQUIRED )
 find_package(QT NAMES Qt6 Qt5 COMPONENTS Core REQUIRED)
 find_package(Qt${QT_VERSION_MAJOR} 5.12.0 REQUIRED COMPONENTS Core Widgets Network PrintSupport Svg LinguistTools)

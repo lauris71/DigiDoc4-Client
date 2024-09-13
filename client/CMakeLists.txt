@@ -1,14 +1,19 @@
-add_executable( TSLDownload TSLDownload.cpp )
-target_link_libraries(TSLDownload Qt${QT_VERSION_MAJOR}::Network)
-set_target_properties(TSLDownload PROPERTIES AUTOMOC OFF)
-get_target_property(qtCore_install_prefix Qt${QT_VERSION_MAJOR}::qmake IMPORTED_LOCATION)
-get_filename_component(qtCore_install_prefix ${qtCore_install_prefix} DIRECTORY)
-add_custom_command(
-	OUTPUT TSL.qrc
-	DEPENDS TSLDownload
-	COMMAND $<TARGET_FILE:TSLDownload> "${CMAKE_CURRENT_BINARY_DIR}" ${TSL_URL} ${TSL_INCLUDE}
-	WORKING_DIRECTORY ${qtCore_install_prefix}
-)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/TSL.qrc)
+	set(TSL_QRC ${CMAKE_CURRENT_SOURCE_DIR}/TSL.qrc)
+else()
+	add_executable(TSLDownload TSLDownload.cpp)
+	target_link_libraries(TSLDownload Qt${QT_VERSION_MAJOR}::Network)
+	set_target_properties(TSLDownload PROPERTIES AUTOMOC OFF)
+	get_target_property(qtCore_install_prefix Qt${QT_VERSION_MAJOR}::qmake IMPORTED_LOCATION)
+	get_filename_component(qtCore_install_prefix ${qtCore_install_prefix} DIRECTORY)
+	add_custom_command(
+		OUTPUT TSL.qrc
+		DEPENDS TSLDownload
+		COMMAND $<TARGET_FILE:TSLDownload> "${CMAKE_CURRENT_BINARY_DIR}" ${TSL_URL} ${TSL_INCLUDE}
+		WORKING_DIRECTORY ${qtCore_install_prefix}
+	)
+	set(TSL_QRC ${CMAKE_CURRENT_BINARY_DIR}/TSL.qrc)
+endif()
 
 configure_file( translations/tr.qrc tr.qrc COPYONLY )
 qt_add_translation(SOURCES translations/en.ts translations/et.ts translations/ru.ts)
@@ -22,17 +27,14 @@ set(SCHEMAS
 	../schema/recipients.fbs
 	../schema/header.fbs
 )
-if(APPLE)
-	set(PROJECT_NAME DigiDoc4)
-endif()
 add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
-	qdigidoc4.rc
+	${PROJECT_NAME}.rc
 	${SOURCES}
 	${WIDGETS}
 	images/images.qrc
 	fonts/fonts.qrc
 	${CMAKE_CURRENT_BINARY_DIR}/tr.qrc
-	${CMAKE_CURRENT_BINARY_DIR}/TSL.qrc
+	${TSL_QRC}
 	common_enums.h
 	main.cpp
 	Application.cpp
@@ -174,9 +176,9 @@ if( APPLE )
 		COMMAND rm $<TARGET_BUNDLE_CONTENT_DIR:${PROJECT_NAME}>/Frameworks/digidocpp.framework/Resources/digidoc-tool
 		COMMAND find $<TARGET_BUNDLE_CONTENT_DIR:${PROJECT_NAME}>/Frameworks -name Headers | xargs rm -rf
 		COMMAND install_name_tool -delete_rpath /Library/Frameworks $<TARGET_FILE:${PROJECT_NAME}>
-		COMMAND ln -sf digidocpp.framework/Libraries/libcrypto.dylib
+		COMMAND ln -sf digidocpp.framework/Libraries/libcrypto.3.dylib
 			$<TARGET_BUNDLE_CONTENT_DIR:${PROJECT_NAME}>/Frameworks/libcrypto.3.dylib
-		COMMAND ln -sf digidocpp.framework/Libraries/libssl.dylib
+		COMMAND ln -sf digidocpp.framework/Libraries/libssl.3.dylib
 			$<TARGET_BUNDLE_CONTENT_DIR:${PROJECT_NAME}>/Frameworks/libssl.3.dylib
 	)
 
@@ -188,9 +190,9 @@ if( APPLE )
 			$<TARGET_BUNDLE_CONTENT_DIR:${PROJECT_NAME}>/PlugIns/*/*
 			$<TARGET_BUNDLE_CONTENT_DIR:${PROJECT_NAME}>/Library/QuickLook/DigiDocQL.qlgenerator
 		COMMAND if echo \"$$SIGNCERT\" | grep -q "Developer ID" \; then
-				codesign -f -s \"$$SIGNCERT\" $<TARGET_BUNDLE_DIR:${PROJECT_NAME}> --entitlements ${CMAKE_SOURCE_DIR}/qdigidoc4.eToken.entitlements\;
+				codesign -f -s \"$$SIGNCERT\" $<TARGET_BUNDLE_DIR:${PROJECT_NAME}> --entitlements ${CMAKE_SOURCE_DIR}/${PROJECT_NAME}.eToken.entitlements\;
 			else
-				codesign -f -s \"$$SIGNCERT\" $<TARGET_BUNDLE_DIR:${PROJECT_NAME}> --entitlements ${CMAKE_SOURCE_DIR}/qdigidoc4.entitlements\;
+				codesign -f -s \"$$SIGNCERT\" $<TARGET_BUNDLE_DIR:${PROJECT_NAME}> --entitlements ${CMAKE_SOURCE_DIR}/${PROJECT_NAME}.entitlements\;
 			fi
 	)
 
@@ -248,13 +250,13 @@ elseif(WIN32)
 	)
 	if(SIGNCERT)
 		list(APPEND SIGNCMD signtool.exe sign /a /v /s MY /n "${SIGNCERT}" /fd SHA256
-			/du http://installer.id.ee /tr http://sha256timestamp.ws.symantec.com/sha256/timestamp /td SHA256)
+			/du http://installer.id.ee /tr http://timestamp.digicert.com /td SHA256)
 		add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
 			COMMAND ${SIGNCMD} "$<$<BOOL:${CROSSSIGNCERT}>:/ph;/ac;${CROSSSIGNCERT}>" $<TARGET_FILE:${PROJECT_NAME}>
 			COMMAND_EXPAND_LISTS
 		)
 		add_custom_command(TARGET msi POST_BUILD
-			COMMAND ${SIGNCMD} "${MSI_FILE}.msi"
+			COMMAND ${SIGNCMD} "${MSI_FILE}.msi" "${MSI_FILE}.qt.msi"
 			WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 		)
 	endif()
@@ -268,10 +270,9 @@ elseif(WIN32)
 		COMMAND ${CMAKE_COMMAND} -E copy ${LIBS_PATH}/libcrypto-3${OPENSSL_SUFFIX}.dll appx
 		COMMAND ${CMAKE_COMMAND} -E copy ${LIBS_PATH}/libssl-3${OPENSSL_SUFFIX}.dll appx
 		COMMAND ${CMAKE_COMMAND} -E copy ${LIBS_PATH}/zlib1.dll appx
-		COMMAND ${CMAKE_COMMAND} -E copy ${LIBS_PATH}/xerces-c_3_2.dll appx
-		COMMAND ${CMAKE_COMMAND} -E copy ${LIBS_PATH}/XalanMessages_1_12.dll appx
-		COMMAND ${CMAKE_COMMAND} -E copy ${LIBS_PATH}/Xalan-C_1_12.dll appx
-		COMMAND ${CMAKE_COMMAND} -E copy ${LIBS_PATH}/xsec_2_0.dll appx
+		COMMAND ${CMAKE_COMMAND} -E copy ${LIBS_PATH}/libxml2.dll appx
+		COMMAND ${CMAKE_COMMAND} -E copy ${LIBS_PATH}/libxmlsec1.dll appx
+		COMMAND ${CMAKE_COMMAND} -E copy ${LIBS_PATH}/libxmlsec1-openssl.dll appx
 		COMMAND ${CMAKE_COMMAND} -E copy ${LIBS_PATH}/digidocpp.dll appx
 		COMMAND ${CMAKE_COMMAND} -E copy ${LIBS_PATH}/digidocpp.conf appx
 		COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/Assets appx/Assets
@@ -293,8 +294,9 @@ else()
 	configure_file( qdigidoc4.1.cmake qdigidoc4.1 )
 	install(TARGETS ${PROJECT_NAME} DESTINATION ${CMAKE_INSTALL_BINDIR})
 	install( FILES ${CMAKE_CURRENT_BINARY_DIR}/qdigidoc4.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1 )
-	install( FILES qdigidoc4.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications )
+	install( FILES ee.ria.qdigidoc4.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications )
 	install( FILES qdigidoc4.xml DESTINATION ${CMAKE_INSTALL_DATADIR}/mime/packages )
+	install( FILES ee.ria.qdigidoc4.metainfo.xml DESTINATION /usr/share/metainfo )
 	foreach(RES 16 22 32 48 128 256 512)
 		install(
 			FILES images/digidoc_${RES}.png

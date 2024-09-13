@@ -28,7 +28,7 @@
 
 #include <memory>
 
-KeyDialog::KeyDialog( const CKey &k, QWidget *parent )
+KeyDialog::KeyDialog( const libcdoc::CKey &k, QWidget *parent )
 	: QDialog( parent )
 {
 	auto d = std::make_unique<Ui::KeyDialog>();
@@ -49,12 +49,13 @@ KeyDialog::KeyDialog( const CKey &k, QWidget *parent )
 	d->view->setHeaderLabels({tr("Attribute"), tr("Value")});
 
 	connect(d->close, &QPushButton::clicked, this, &KeyDialog::accept);
-	if (k.type == CKey::CDOC1) {
-		const CKeyCDoc1& kd = static_cast<const CKeyCDoc1&>(k);
-		connect(d->showCert, &QPushButton::clicked, this, [this, cert=kd.cert] {
+	if (k.isCertificate()) {
+		const libcdoc::CKeyCert& kd = static_cast<const libcdoc::CKeyCert&>(k);
+		QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(kd.cert.data()), kd.cert.size()), QSsl::Der);
+		connect(d->showCert, &QPushButton::clicked, this, [this, cert=kcert] {
 			CertificateDetails::showCertificate(cert, this);
 		});
-		d->showCert->setHidden(kd.cert.isNull());
+		d->showCert->setHidden(kcert.isNull());
 	} else {
 		d->showCert->setHidden(true);
 	}
@@ -68,21 +69,31 @@ KeyDialog::KeyDialog( const CKey &k, QWidget *parent )
 		d->view->addTopLevelItem(i);
 	};
 
+	auto addItemStr = [&](const QString &parameter, const std::string &value) {
+		if(value.empty())
+			return;
+		auto *i = new QTreeWidgetItem(d->view);
+		i->setText(0, parameter);
+		i->setText(1, QString::fromStdString(value));
+		d->view->addTopLevelItem(i);
+	};
+
 	bool adjust_size = false;
-	if (k.type == CKey::Type::CDOC1) {
-		const CKeyCDoc1& cd1key = static_cast<const CKeyCDoc1&>(k);
-		addItem(tr("Recipient"), cd1key.label);
-		addItem(tr("Crypto method"), cd1key.method);
-		addItem(tr("ConcatKDF digest method"), cd1key.concatDigest);
-		addItem(tr("Expiry date"), cd1key.cert.expiryDate().toLocalTime().toString(QStringLiteral("dd.MM.yyyy hh:mm:ss")));
-		addItem(tr("Issuer"), SslCertificate(cd1key.cert).issuerInfo(QSslCertificate::CommonName));
-		adjust_size = !cd1key.concatDigest.isEmpty();
+	if (k.isCDoc1()) {
+		const libcdoc::CKeyCDoc1& kd = static_cast<const libcdoc::CKeyCDoc1&>(k);
+		QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(kd.cert.data()), kd.cert.size()), QSsl::Der);
+		addItemStr(tr("Recipient"), kd.label);
+		addItem(tr("Crypto method"), QString::fromStdString(kd.method));
+		addItem(tr("ConcatKDF digest method"), QString::fromStdString(kd.concatDigest));
+		addItem(tr("Expiry date"), kcert.expiryDate().toLocalTime().toString(QStringLiteral("dd.MM.yyyy hh:mm:ss")));
+		addItem(tr("Issuer"), SslCertificate(kcert).issuerInfo(QSslCertificate::CommonName));
+		adjust_size = !kd.concatDigest.empty();
 	}
-	addItem(tr("Label"), k.label);
-	if (k.type == CKey::SERVER) {
-		const CKeyServer& sk = static_cast<const CKeyServer&>(k);
-		addItem(tr("Key server ID"), sk.keyserver_id);
-		addItem(tr("Transaction ID"), sk.transaction_id);
+	addItemStr(tr("Label"), k.label);
+	if (k.type == libcdoc::CKey::SERVER) {
+		const libcdoc::CKeyServer& sk = static_cast<const libcdoc::CKeyServer&>(k);
+		addItem(tr("Key server ID"), QString::fromUtf8(sk.keyserver_id.data(), sk.keyserver_id.size()));
+		addItem(tr("Transaction ID"), QString::fromUtf8(sk.transaction_id.data(), sk.transaction_id.size()));
 	}
 	d->view->resizeColumnToContents( 0 );
 	if(adjust_size) adjustSize();

@@ -42,6 +42,7 @@
 #include <QtCore/QJsonObject>
 #include <QtNetwork/QSslConfiguration>
 #include <QtNetwork/QSslError>
+#include <QtNetwork/QSslKey>
 #include <QtWidgets/QMessageBox>
 
 AddRecipients::AddRecipients(ItemList* itemList, QWidget *parent)
@@ -111,10 +112,11 @@ void AddRecipients::addAllRecipientToRightPane()
 		if(rightList.contains(value->getKey()))
 			continue;
 		addRecipientToRightPane(value);
-		std::shared_ptr<CKey> key = value->getKey();
-		if (key->type == CKey::Type::CDOC1) {
-			std::shared_ptr<CKeyCDoc1> kd = std::static_pointer_cast<CKeyCDoc1>(key);
-			history.append(kd->cert);
+		std::shared_ptr<libcdoc::CKey> key = value->getKey();
+		if (key->isCertificate()) {
+			std::shared_ptr<libcdoc::CKeyCert> kd = std::static_pointer_cast<libcdoc::CKeyCert>(key);
+			QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(kd->cert.data()), kd->cert.size()));
+			history.append(kcert);
 		}
 	}
 	ui->confirm->setDisabled(rightList.isEmpty());
@@ -175,13 +177,19 @@ AddressItem * AddRecipients::addRecipientToLeftPane(const QSslCertificate& cert)
 	if(leftItem)
 		return leftItem;
 
-	leftItem = new AddressItem(std::make_shared<CKeyCert>(cert), ui->leftPane);
+	QByteArray qder = cert.toDer();
+	std::vector<uint8_t> sder = std::vector<uint8_t>(qder.cbegin(), qder.cend());
+	leftItem = new AddressItem(std::make_shared<libcdoc::CKeyCert>(CryptoDoc::labelFromCertificate(sder), sder), ui->leftPane);
 	leftList.insert(cert, leftItem);
 	ui->leftPane->addWidget(leftItem);
 
+	QSslKey cert_key = cert.publicKey();
+	QByteArray der = Crypto::toPublicKeyDer(cert_key);
+	std::vector<uint8_t> other_key(der.cbegin(), der.cend());
+
 	bool contains = false;
-	for (std::shared_ptr<CKey> k: rightList) {
-		if (k->isTheSameRecipient(cert)) {
+	for (std::shared_ptr<libcdoc::CKey> k: rightList) {
+		if (k->isTheSameRecipient(other_key)) {
 			contains = true;
 			break;
 		}
@@ -199,17 +207,18 @@ AddressItem * AddRecipients::addRecipientToLeftPane(const QSslCertificate& cert)
 	return leftItem;
 }
 
-bool AddRecipients::addRecipientToRightPane(std::shared_ptr<CKey> key, bool update)
+bool AddRecipients::addRecipientToRightPane(std::shared_ptr<libcdoc::CKey> key, bool update)
 {
-	for (std::shared_ptr<CKey> k: rightList) {
+	for (std::shared_ptr<libcdoc::CKey> k: rightList) {
 		if (k->isTheSameRecipient(*key)) return false;
 	}
 
 	if(update)
 	{
-		if (key->type == CKey::Type::CDOC1) {
-			std::shared_ptr<CKeyCDoc1> kd = std::static_pointer_cast<CKeyCDoc1>(key);
-			if(auto expiryDate = kd->cert.expiryDate(); expiryDate <= QDateTime::currentDateTime())
+		if (key->type == libcdoc::CKey::Type::CDOC1) {
+			std::shared_ptr<libcdoc::CKeyCert> kd = std::static_pointer_cast<libcdoc::CKeyCert>(key);
+			QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(kd->cert.data()), kd->cert.size()), QSsl::Der);
+			if(auto expiryDate = kcert.expiryDate(); expiryDate <= QDateTime::currentDateTime())
 			{
 				if(Settings::CDOC2_DEFAULT && Settings::CDOC2_USE_KEYSERVER)
 				{
@@ -226,9 +235,9 @@ bool AddRecipients::addRecipientToRightPane(std::shared_ptr<CKey> key, bool upda
 			}
 			QSslConfiguration backup = QSslConfiguration::defaultConfiguration();
 			QSslConfiguration::setDefaultConfiguration(CheckConnection::sslConfiguration());
-			QList<QSslError> errors = QSslCertificate::verify({ kd->cert });
+			QList<QSslError> errors = QSslCertificate::verify({ kcert });
 			QSslConfiguration::setDefaultConfiguration(backup);
-			errors.removeAll(QSslError(QSslError::CertificateExpired, kd->cert));
+			errors.removeAll(QSslError(QSslError::CertificateExpired, kcert));
 			if(!errors.isEmpty())
 			{
 				auto *dlg = new WarningDialog(tr("Recipient’s certification chain contains certificates that are not trusted. Continue with encryption?"), this);
@@ -247,9 +256,10 @@ bool AddRecipients::addRecipientToRightPane(std::shared_ptr<CKey> key, bool upda
 	connect(rightItem, &AddressItem::remove, this, &AddRecipients::removeRecipientFromRightPane);
 	ui->rightPane->addWidget(rightItem);
 	ui->confirm->setDisabled(rightList.isEmpty());
-	if (key->type == CKey::Type::CDOC1) {
-		std::shared_ptr<CKeyCDoc1> kd = std::static_pointer_cast<CKeyCDoc1>(key);
-		historyCertData.addAndSave({kd->cert});
+	if (key->isCertificate()) {
+		std::shared_ptr<libcdoc::CKeyCert> kd = std::static_pointer_cast<libcdoc::CKeyCert>(key);
+		QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(kd->cert.data()), kd->cert.size()));
+		historyCertData.addAndSave({kcert});
 	}
 	return true;
 }
@@ -290,9 +300,9 @@ bool AddRecipients::isUpdated() const
 	return updated;
 }
 
-QList<std::shared_ptr<CKey>> AddRecipients::keys()
+QList<std::shared_ptr<libcdoc::CKey>> AddRecipients::keys()
 {
-	QList<std::shared_ptr<CKey>> recipients;
+	QList<std::shared_ptr<libcdoc::CKey>> recipients;
 	for(auto *item: ui->rightPane->items)
 	{
 		if(auto *address = qobject_cast<AddressItem *>(item))
@@ -304,10 +314,11 @@ QList<std::shared_ptr<CKey>> AddRecipients::keys()
 void AddRecipients::removeRecipientFromRightPane(Item *toRemove)
 {
 	auto *rightItem = qobject_cast<AddressItem*>(toRemove);
-	std::shared_ptr<CKey> key = rightItem->getKey();
-	if (key->type == CKey::Type::CDOC1) {
-		std::shared_ptr<CKeyCDoc1> kd = std::static_pointer_cast<CKeyCDoc1>(key);
-		if(auto it = leftList.find(kd->cert); it != leftList.end())
+	std::shared_ptr<libcdoc::CKey> key = rightItem->getKey();
+	if (key->isCertificate()) {
+		std::shared_ptr<libcdoc::CKeyCert> kd = std::static_pointer_cast<libcdoc::CKeyCert>(key);
+		QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(kd->cert.data()), kd->cert.size()), QSsl::Der);
+		if(auto it = leftList.find(kcert); it != leftList.end())
 		{
 			it.value()->setDisabled(false);
 			it.value()->showButton(AddressItem::Add);

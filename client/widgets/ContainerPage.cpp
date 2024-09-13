@@ -316,7 +316,7 @@ void ContainerPage::transition(CryptoDoc *container, const QSslCertificate &cert
 	}
 	isSupported = (container->state() & UnencryptedContainer) || container->canDecrypt(cert);
 	setHeader(container->fileName());
-	for(std::shared_ptr<CKey>& key: container->keys()) {
+	for(const std::shared_ptr<libcdoc::CKey>& key: container->keys()) {
 		AddressItem *addr = new AddressItem(key, ui->rightPane, true);
 		connect(addr, &AddressItem::decrypt, this, [this,key]{emit decryptReq(key);});
 		ui->rightPane->addWidget(addr);
@@ -394,7 +394,7 @@ void ContainerPage::update(bool canDecrypt, CryptoDoc* container)
 
 	hasEmptyFile = false;
 	ui->rightPane->clear();
-	for(std::shared_ptr<CKey>& key: container->keys()) {
+	for(const std::shared_ptr<libcdoc::CKey>& key: container->keys()) {
 		AddressItem *addr = new AddressItem(key, ui->rightPane, true);
 		connect(addr, &AddressItem::decrypt, this, [this,key]{emit decryptReq(key);});
 		ui->rightPane->addWidget(addr);

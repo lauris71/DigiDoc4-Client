@@ -21,6 +21,8 @@
 
 #include <QWidget>
 
+#include <libcdoc/cdoc.h>
+
 #include "common_enums.h"
 #include "QSmartCard.h"
 
@@ -28,7 +30,6 @@ namespace Ui {
 class MainWindow;
 }
 
-struct CKey;
 class CryptoDoc;
 class DigiDoc;
 class DocumentModel;
@@ -72,7 +73,7 @@ private:
 	void convertToBDoc();
 	void convertToCDoc();
 	ria::qdigidoc4::ContainerState currentState();
-	void decrypt(std::shared_ptr<CKey> key);
+	void decrypt(std::shared_ptr<libcdoc::CKey> key);
 	bool encrypt(bool askForKey = false);
 	void loadPicture();
 	void moveCryptoContainer();
@@ -105,7 +106,7 @@ private:
 	void showPinBlockedWarning(const QSmartCardData& t);
 	void updateSelector();
 	void updateSelectorData(TokenData data);
-	void updateKeys(const QList<std::shared_ptr<CKey>> &keys);
+	void updateKeys(const QList<std::shared_ptr<libcdoc::CKey>> &keys);
 	void updateMyEID(const TokenData &t);
 	void updateMyEid(const QSmartCardData &data);
 	bool wrap(const QString& wrappedFile, bool enclose);
@@ -121,5 +122,5 @@ private:
 	Ui::MainWindow *ui;
 	WarningList *warnings;
 
-	void decryptClicked(std::shared_ptr<CKey> key);
+	void decryptClicked(std::shared_ptr<libcdoc::CKey> key);
 };

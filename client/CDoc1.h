@@ -29,34 +29,36 @@ class QXmlStreamWriter;
 
 using EVP_CIPHER = struct evp_cipher_st;
 
-class CDoc1 final: public CDoc, private QFile
+class CDoc1 final : private QFile
 {
 public:
-	CDoc1() = default;
+	libcdoc::CKey::DecryptionStatus canDecrypt(const libcdoc::Certificate &cert) const;
+	std::shared_ptr<libcdoc::CKey> getDecryptionKey(const libcdoc::Certificate &cert) const;
+	bool decryptPayload(const std::vector<uint8_t> &fmk);
+	bool save(const std::string &path);
+	std::vector<uint8_t> getFMK(const libcdoc::CKey &key, const std::vector<uint8_t>& secret);
 
-	static bool isCDoc1File(const QString& path);
+	bool setLastError(const std::string &msg) { return (lastError = msg).empty(); }
 
-	CKey::DecryptionStatus canDecrypt(const QSslCertificate &cert) const final;
-	std::shared_ptr<CKey> getDecryptionKey(const QSslCertificate &cert) const final;
-	bool decryptPayload(const QByteArray &key) final;
-	bool save(const QString &path) final;
-	QByteArray getFMK(const CKey &key, const QByteArray& secret) final;
-	int version() final;
-
-	static std::unique_ptr<CDoc1> load(const QString& path);
+	static std::unique_ptr<CDoc1> load(const std::string& path);
+protected:
+	std::vector<std::shared_ptr<libcdoc::CKey>> keys;
+	std::vector<libcdoc::IOEntry> files;
 private:
-	CDoc1(const QString &path);
+	CDoc1() = default;
+	CDoc1(const std::string &path);
 
 	void writeDDoc(QIODevice *ddoc);
 
 	static QByteArray fromBase64(QStringView data);
-	static std::vector<File> readDDoc(QIODevice *ddoc);
+	static std::vector<libcdoc::IOEntry> readDDoc(QIODevice *ddoc);
 	static void readXML(QIODevice *io, const std::function<void (QXmlStreamReader &)> &f);
 	static void writeAttributes(QXmlStreamWriter &x, const QMap<QString,QString> &attrs);
 	static void writeBase64Element(QXmlStreamWriter &x, const QString &ns, const QString &name, const QByteArray &data);
 	static void writeElement(QXmlStreamWriter &x, const QString &ns, const QString &name, std::function<void ()> &&f = {});
 	static void writeElement(QXmlStreamWriter &x, const QString &ns, const QString &name, const QMap<QString,QString> &attrs, std::function<void ()> &&f = {});
 
+	std::string lastError;
 	QString method, mime;
 	QHash<QString,QString> properties;
 

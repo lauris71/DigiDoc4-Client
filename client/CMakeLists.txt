@@ -37,15 +37,13 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
 	main.cpp
 	Application.cpp
 	Application.h
-	CDoc1.cpp
-	CDoc1.h
-	CDoc2.cpp
-	CDoc2.h
 	CheckConnection.cpp
 	CheckConnection.h
 	Colors.h
 	Crypto.cpp
 	Crypto.h
+	CDoc1.cpp CDoc1.h
+	CDoc2.cpp CDoc2.h
 	CryptoDoc.cpp
 	CryptoDoc.h
 	DateTime.cpp
@@ -89,10 +87,14 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
 	TokenData.h
 	Utils.h
         dialogs/PasswordDialog.h dialogs/PasswordDialog.cpp dialogs/PasswordDialog.ui
+        CDocSupport.cpp CDocSupport.h
 )
+
+add_subdirectory(libcdoc)
 
 target_link_libraries(${PROJECT_NAME}
 	qdigidoccommon
+        cdoc
 	Qt${QT_VERSION_MAJOR}::PrintSupport
 	Qt${QT_VERSION_MAJOR}::Svg
 	${LIBDIGIDOCPP_LIBRARY}
@@ -118,7 +120,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 	MACOSX_BUNDLE_BUNDLE_NAME ${PROJECT_NAME}
 	MACOSX_BUNDLE_GUI_IDENTIFIER "ee.ria.${PROJECT_NAME}"
 )
-target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR} ${LIBDIGIDOCPP_INCLUDE_DIR})
+target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_BUILD_RPATH} ${LIBDIGIDOCPP_INCLUDE_DIR})
 target_compile_definitions(${PROJECT_NAME} PRIVATE
 	CDOC2_GET_URL="${CDOC2_GET_URL}"
 	CDOC2_POST_URL="${CDOC2_POST_URL}"

@@ -18,6 +18,7 @@
  */
 
 #pragma once
+<<<<<<< HEAD
 
 #include "CryptoDoc.h"
 
@@ -72,3 +73,5 @@ private:
 	static const QHash<QString, const EVP_CIPHER*> ENC_MTH;
 	static const QHash<QString, QCryptographicHash::Algorithm> SHA_MTH;
 };
+=======
+>>>>>>> 0a90362 (Cleared CDoc1)

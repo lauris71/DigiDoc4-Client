@@ -235,15 +235,15 @@ ContainerState MainWindow::currentState()
 	return ContainerState::Uninitialized;
 }
 
-void MainWindow::decrypt(std::shared_ptr<CKey> key)
+void MainWindow::decrypt(std::shared_ptr<libcdoc::CKey> key)
 {
 	if(!cryptoDoc) return;
 
 	QByteArray secret;
-	if (key && (key->type == CKey::Type::SYMMETRIC_KEY)) {
-		std::shared_ptr<CKeySymmetric> skey = std::static_pointer_cast<CKeySymmetric>(key);
+	if (key && (key->type == libcdoc::CKey::Type::SYMMETRIC_KEY)) {
+		std::shared_ptr<libcdoc::CKeySymmetric> skey = std::static_pointer_cast<libcdoc::CKeySymmetric>(key);
 		PasswordDialog p;
-		p.setLabel(key->label);
+		p.setLabel(QString::fromStdString(key->label));
 		if (skey->kdf_iter > 0) {
 			p.setMode(PasswordDialog::Mode::DECRYPT, PasswordDialog::Type::PASSWORD);
 			if(!p.exec()) return;
@@ -511,8 +511,11 @@ void MainWindow::convertToCDoc()
 		cryptoContainer->documentModel()->addTempFiles(digiDoc->documentModel()->tempFiles());
 
 	auto cardData = qApp->signer()->tokenauth();
-	if(!cardData.cert().isNull())
-		cryptoContainer->addKey(std::make_shared<CKeyCert>(cardData.cert()));
+	if(!cardData.cert().isNull()) {
+		QByteArray qder = cardData.cert().toDer();
+		std::vector<uint8_t> sder = std::vector<uint8_t>(qder.cbegin(), qder.cend());
+		cryptoContainer->addEncryptionKey(std::make_shared<libcdoc::CKeyCert>(CryptoDoc::labelFromCertificate(sder), sder));
+	}
 
 	resetCryptoDoc(cryptoContainer.release());
 	resetDigiDoc(nullptr, false);
@@ -1112,16 +1115,16 @@ void MainWindow::updateSelectorData(TokenData data)
 		showCardMenu(false);
 }
 
-void MainWindow::updateKeys(const QList<std::shared_ptr<CKey>> &keys)
+void MainWindow::updateKeys(const QList<std::shared_ptr<libcdoc::CKey>> &keys)
 {
 	if(!cryptoDoc)
 		return;
 
-	for(auto i = cryptoDoc->keys().size() - 1; i >= 0; i--)
-		cryptoDoc->removeKey(i);
+	for(auto i = cryptoDoc->keys().size(); i != 0; i--)
+		cryptoDoc->removeKey(i - 1);
 	for(const auto &key: keys)
-		cryptoDoc->addKey(key);
-	ui->cryptoContainerPage->update(cryptoDoc, qApp->signer()->tokenauth().cert());
+		cryptoDoc->addEncryptionKey(key);
+	ui->cryptoContainerPage->update(cryptoDoc->canDecrypt(qApp->signer()->tokenauth().cert()), cryptoDoc);
 }
 
 void MainWindow::containerSummary()
@@ -1146,7 +1149,7 @@ void MainWindow::containerSummary()
 }
 
 void
-MainWindow::decryptClicked(std::shared_ptr<CKey> key)
+MainWindow::decryptClicked(std::shared_ptr<libcdoc::CKey> key)
 {
 	qDebug() << "Decrypt clicked:";
 	decrypt(key);

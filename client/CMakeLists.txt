@@ -39,14 +39,12 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
 	main.cpp
 	Application.cpp
 	Application.h
-	CDoc1.cpp
-	CDoc1.h
-	CDoc2.cpp
-	CDoc2.h
 	CheckConnection.cpp
 	CheckConnection.h
 	Crypto.cpp
 	Crypto.h
+	CDoc1.cpp CDoc1.h
+	CDoc2.cpp CDoc2.h
 	CryptoDoc.cpp
 	CryptoDoc.h
 	DateTime.cpp
@@ -91,6 +89,7 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
 	TokenData.h
 	Utils.h
         dialogs/PasswordDialog.h dialogs/PasswordDialog.cpp dialogs/PasswordDialog.ui
+        CDocSupport.cpp CDocSupport.h
 )
 qt_add_translations(${PROJECT_NAME} TS_FILES
 	translations/en.ts
@@ -105,8 +104,11 @@ qt_add_translations(${PROJECT_NAME} TS_FILES
 )
 qt_add_resources(${PROJECT_NAME} tsl BASE ${TSL_DIR} PREFIX /TSL FILES ${TSL_LIST})
 
+add_subdirectory(libcdoc)
+
 target_link_libraries(${PROJECT_NAME}
 	qdigidoccommon
+	cdoc
 	Qt6::PrintSupport
 	Qt6::SvgWidgets
 	digidocpp::digidocpp
@@ -127,6 +129,8 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 	MACOSX_BUNDLE_BUNDLE_NAME ${PROJECT_NAME}
 	MACOSX_BUNDLE_GUI_IDENTIFIER "ee.ria.${PROJECT_NAME}"
 )
+target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_BUILD_RPATH} ${LIBDIGIDOCPP_INCLUDE_DIR})
+
 target_compile_definitions(${PROJECT_NAME} PRIVATE
 	CDOC2_GET_URL="${CDOC2_GET_URL}"
 	CDOC2_POST_URL="${CDOC2_POST_URL}"

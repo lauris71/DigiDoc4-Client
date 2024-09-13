@@ -32,12 +32,12 @@ class AddressItem::Private: public Ui::AddressItem
 {
 public:
 	QString code;
-	std::shared_ptr<CKey> key;
+	std::shared_ptr<libcdoc::CKey> key;
 	QString label;
 	bool yourself = false;
 };
 
-AddressItem::AddressItem(std::shared_ptr<CKey> key, QWidget *parent, bool showIcon)
+AddressItem::AddressItem(std::shared_ptr<libcdoc::CKey> key, QWidget *parent, bool showIcon)
 	: Item(parent)
 	, ui(new Private)
 {
@@ -70,8 +70,8 @@ AddressItem::AddressItem(std::shared_ptr<CKey> key, QWidget *parent, bool showIc
 		ui->code = {};
         ui->label = key->label;
 	}
-    if(ui->label.isEmpty() && ui->key->type == CKey::PUBLIC_KEY) {
-        const CKeyPublicKey& pk = static_cast<const CKeyPublicKey&>(*ui->key);
+    if(ui->label.isEmpty() && ui->key->type == libcdoc::CKey::PUBLIC_KEY) {
+        const libcdoc::CKeyPublicKey& pk = static_cast<const libcdoc::CKeyPublicKey&>(*ui->key);
         ui->label = pk.fromKeyLabel().value(QStringLiteral("cn"), key->label);
 	}
 	setIdType();
@@ -94,16 +94,16 @@ void AddressItem::changeEvent(QEvent* event)
 	QWidget::changeEvent(event);
 }
 
-const std::shared_ptr<CKey> AddressItem::getKey() const
+const std::shared_ptr<libcdoc::CKey> AddressItem::getKey() const
 {
 	return ui->key;
 }
 
 void AddressItem::idChanged(const SslCertificate &cert)
 {
-    auto key = CKeyCDoc1::fromCertificate(cert);
-    ui->yourself = !key->rcpt_key.isNull() && ui->key == key;
-    setName();
+	QByteArray qder = cert.toDer();
+	std::vector<uint8_t> sder = std::vector<uint8_t>(qder.cbegin(), qder.cend());
+	idChanged(std::make_shared<libcdoc::CKeyCert>(CryptoDoc::labelFromCertificate(sder), sder));
 }
 
 void AddressItem::initTabOrder(QWidget *item)
@@ -151,9 +151,9 @@ void AddressItem::setIdType()
 {
 	ui->expire->clear();
     if (ui->key->isPKI()) {
-        std::shared_ptr<CKeyPKI> pki = std::static_pointer_cast<CKeyPKI>(ui->key);
+        std::shared_ptr<libcdoc::CKeyPKI> pki = std::static_pointer_cast<libcdoc::CKeyPKI>(ui->key);
         if (ui->key->isCertificate()) {
-            std::shared_ptr<CKeyCert> ckd = std::static_pointer_cast<CKeyCert>(ui->key);
+            std::shared_ptr<libcdoc::CKeyCert> ckd = std::static_pointer_cast<libcdoc::CKeyCert>(ui->key);
             ui->idType->setHidden(false);
             QString str;
             SslCertificate cert(ckd->cert);

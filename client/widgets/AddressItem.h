@@ -21,9 +21,9 @@
 
 #include <memory>
 
-#include "widgets/Item.h"
+#include <libcdoc/cdoc.h>
 
-struct CKey;
+#include "widgets/Item.h"
 
 class AddressItem final : public Item
 {
@@ -37,10 +37,10 @@ public:
 		Added,
 	};
 
-	explicit AddressItem(std::shared_ptr<CKey> k, QWidget *parent = {}, bool showIcon = false);
+	explicit AddressItem(std::shared_ptr<libcdoc::CKey> k, QWidget *parent = {}, bool showIcon = false);
 	~AddressItem() final;
 
-	const std::shared_ptr<CKey> getKey() const;
+	const std::shared_ptr<libcdoc::CKey> getKey() const;
 	void idChanged(const SslCertificate &cert) final;
 	void initTabOrder(QWidget *item) final;
 	QWidget* lastTabWidget() final;
@@ -48,7 +48,7 @@ public:
 	void stateChange(ria::qdigidoc4::ContainerState state) final;
 
 signals:
-	void decrypt(std::shared_ptr<CKey> key);
+	void decrypt(std::shared_ptr<libcdoc::CKey> key);
 
 private:
 	void changeEvent(QEvent *event) final;

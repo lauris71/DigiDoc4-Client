@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 /*
  * QDigiDocClient
  *
@@ -1016,3 +1017,5 @@ int CDoc2::version()
 {
 	return 2;
 }
+=======
+>>>>>>> be4b5e5 (First iteration of separate libcdoc (to be moved into standalone project))

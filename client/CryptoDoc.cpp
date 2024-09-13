@@ -17,11 +17,12 @@
  *
  */
 
+#include <fstream>
+
 #include "CryptoDoc.h"
 
 #include "Application.h"
 #include "CDoc1.h"
-#include "CDoc2.h"
 #include "Crypto.h"
 #include "TokenData.h"
 #include "QCryptoBackend.h"
@@ -43,13 +44,107 @@
 #include <QtNetwork/QSslKey>
 #include <QtWidgets/QMessageBox>
 
+#include <libcdoc/cdoc2.h>
+#include <libcdoc/certificate.h>
+#include <libcdoc/Crypto.h>
+
 using namespace ria::qdigidoc4;
+
+auto toHex = [](const std::vector<uint8_t>& data) -> QString {
+	QByteArray ba(reinterpret_cast<const char *>(data.data()), data.size());
+	return ba.toHex();
+};
+
+std::string
+CryptoDoc::labelFromCertificate(const std::vector<uint8_t>& cert)
+{
+	// Test
+	libcdoc::Certificate sslcert(cert);
+	std::string name = sslcert.getCommonName();
+	qDebug() << "COMMON NAME:" << name;
+	name = sslcert.getGivenName();
+	qDebug() << "GIVEN NAME:" << name;
+	name = sslcert.getSurname();
+	qDebug() << "SURNAME:" << name;
+	name = sslcert.getSerialNumber();
+	qDebug() << "SERIAL:" << name;
+	std::vector<std::string> policies = sslcert.policies();
+
+
+	QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(cert.data()), cert.size()), QSsl::Der);
+	return [](const SslCertificate &c) {
+		QString cn = c.subjectInfo(QSslCertificate::CommonName);
+		QString gn = c.subjectInfo("GN");
+		QString sn = c.subjectInfo("SN");
+		if(!gn.isEmpty() || !sn.isEmpty())
+			cn = QStringLiteral("%1 %2 %3").arg(gn, sn, c.personalCode());
+
+		int certType = c.type();
+		if(certType & SslCertificate::EResidentSubType)
+			return QStringLiteral("%1 %2").arg(cn, CryptoDoc::tr("Digi-ID E-RESIDENT")).toStdString();
+		if(certType & SslCertificate::DigiIDType)
+			return QStringLiteral("%1 %2").arg(cn, CryptoDoc::tr("Digi-ID")).toStdString();
+		if(certType & SslCertificate::EstEidType)
+			return QStringLiteral("%1 %2").arg(cn, CryptoDoc::tr("ID-CARD")).toStdString();
+		return cn.toStdString();
+	}(kcert);
+}
+
+std::vector<uint8_t>
+DDCryptoBackend::decryptRSA(const std::vector<uint8_t> &data, bool oaep) const
+{
+	QByteArray qdata(reinterpret_cast<const char *>(data.data()), data.size());
+	QByteArray qkek = qApp->signer()->decrypt([&qdata, &oaep](QCryptoBackend *backend) {
+			return backend->decrypt(qdata, oaep);
+	});
+	return std::vector<uint8_t>(qkek.cbegin(), qkek.cend());
+}
+
+const QString SHA256_MTH = QStringLiteral("http://www.w3.org/2001/04/xmlenc#sha256");
+const QString SHA384_MTH = QStringLiteral("http://www.w3.org/2001/04/xmlenc#sha384");
+const QString SHA512_MTH = QStringLiteral("http://www.w3.org/2001/04/xmlenc#sha512");
+const QHash<QString, QCryptographicHash::Algorithm> SHA_MTH{
+	{SHA256_MTH, QCryptographicHash::Sha256}, {SHA384_MTH, QCryptographicHash::Sha384}, {SHA512_MTH, QCryptographicHash::Sha512}
+};
+
+std::vector<uint8_t>
+DDCryptoBackend::deriveConcatKDF(const std::vector<uint8_t> &publicKey, const std::string &digest, int keySize,
+	const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo) const
+{
+	QByteArray decryptedKey = qApp->signer()->decrypt([&publicKey, &digest, &keySize, &algorithmID, &partyUInfo, &partyVInfo](QCryptoBackend *backend) {
+			QByteArray ba(reinterpret_cast<const char *>(publicKey.data()), publicKey.size());
+			return backend->deriveConcatKDF(ba, SHA_MTH[QString::fromStdString(digest)],
+				keySize,
+				QByteArray(reinterpret_cast<const char *>(algorithmID.data()), algorithmID.size()),
+				QByteArray(reinterpret_cast<const char *>(partyUInfo.data()), partyUInfo.size()),
+				QByteArray(reinterpret_cast<const char *>(partyVInfo.data()), partyVInfo.size()));
+	});
+	return std::vector<uint8_t>(decryptedKey.cbegin(), decryptedKey.cend());
+}
+
+std::vector<uint8_t>
+DDCryptoBackend::deriveHMACExtract(const std::vector<uint8_t> &key_material, const std::vector<uint8_t> &salt, int keySize) const
+{
+	QByteArray qkey_material(reinterpret_cast<const char *>(key_material.data()), key_material.size());
+	QByteArray qsalt(reinterpret_cast<const char *>(salt.data()), salt.size());
+	QByteArray qkekpm = qApp->signer()->decrypt([&qkey_material, &qsalt, &keySize](QCryptoBackend *backend) {
+		return backend->deriveHMACExtract(qkey_material, qsalt, keySize);
+	});
+	return std::vector<uint8_t>(qkekpm.cbegin(), qkekpm.cend());
+}
+
+bool
+DDCryptoBackend::getSecret(std::vector<uint8_t>& _secret, const std::string& _label)
+{
+	_secret = secret;
+	return true;
+}
 
 class CryptoDoc::Private final: public QThread
 {
 	Q_OBJECT
 public:
-	bool isEncryptedWarning() const;
+	bool warnIfNotWritable() const;
 	void run() final;
 	inline void waitForFinished()
 	{
@@ -59,43 +154,97 @@ public:
 		e.exec();
 	}
 
-	std::unique_ptr<CDoc> cdoc;
+	//std::unique_ptr<libcdoc::CDoc> cdoc;
+	/* INVARIANT: Either reader or writer but not both is not null */
+	std::unique_ptr<libcdoc::CDocReader> reader;
+	std::unique_ptr<libcdoc::CDocWriter> writer;
+
 	QString			fileName;
-	bool			isEncrypted = false;
+	//bool			encrypted = false;
+	//bool isEncrypted() const { return encrypted; }
+	bool isEncrypted() const { return reader != nullptr; }
 	CDocumentModel	*documents = new CDocumentModel(this);
 	QStringList		tempFiles;
 	// Decryption data
 	QByteArray fmk;
 	// Encryption data
 	QString label;
-	QByteArray secret;
 	uint32_t kdf_iter;
+
+	// libcdoc handlers
+	DDConfiguration conf;
+	DDCryptoBackend crypto;
+	DDNetworkBackend network;
+
+	std::vector<libcdoc::IOEntry> files;
+	std::vector<std::shared_ptr<libcdoc::CKey>> keys;
+
+	const std::vector<libcdoc::IOEntry> &getFiles() {
+		return files;
+	}
+	std::unique_ptr<libcdoc::CDocWriter> createCDocWriter() {
+		libcdoc::CDocWriter *w = libcdoc::CDocWriter::createWriter(Settings::CDOC2_DEFAULT ? 2 : 1, fileName.toStdString(),
+																   &conf, &crypto, &network);
+		return std::unique_ptr<libcdoc::CDocWriter>(w);
+	}
+	std::unique_ptr<libcdoc::CDocReader> createCDocReader(const std::string& filename) {
+		libcdoc::CDocReader *r = libcdoc::CDocReader::createReader(filename,
+																   &conf, &crypto, &network);
+		if (!r) {
+			WarningDialog::show(tr("Failed to open document"), tr("Unsupported file format"));
+			return nullptr;
+		}
+		return std::unique_ptr<libcdoc::CDocReader>(r);
+	}
+private:
 };
 
-bool CryptoDoc::Private::isEncryptedWarning() const
+bool CryptoDoc::Private::warnIfNotWritable() const
 {
-	if( fileName.isEmpty() )
+	if(fileName.isEmpty()) {
 		WarningDialog::show(CryptoDoc::tr("Container is not open"));
-	if(isEncrypted)
+	} else if(!writer) {
 		WarningDialog::show(CryptoDoc::tr("Container is encrypted"));
-	return fileName.isEmpty() || isEncrypted;
+	} else {
+		return false;
+	}
+	return true;
 }
 
 void CryptoDoc::Private::run()
 {
-	if(isEncrypted)
-	{
+	if(reader) {
 		qCDebug(CRYPTO) << "Decrypt" << fileName;
-		isEncrypted = !cdoc->decryptPayload(fmk);
-	}
-	else
-	{
-		qCDebug(CRYPTO) << "Encrypt" << fileName;
-		if (secret.isEmpty()) {
-			isEncrypted = cdoc->save(fileName);
-		} else {
-			isEncrypted = CDoc2::save(fileName, cdoc->files, label, secret, kdf_iter);
+		std::vector<uint8_t> pfmk(fmk.cbegin(), fmk.cend());
+		//encrypted = !cdoc->decryptPayload(pfmk);
+		files = reader->decryptPayload(pfmk);
+		if (!files.empty()) {
+			// Success, immediately create writer from reader
+			keys.clear();
+			writer = createCDocWriter();
+			reader.reset();
 		}
+	} else if (writer) {
+		qCDebug(CRYPTO) << "Encrypt" << fileName;
+		if (crypto.secret.empty()) {
+			if (writer->encrypt(fileName.toStdString(), files, keys)) {
+				// Encryption successful, open new reader
+				writer.reset();
+				reader = createCDocReader(fileName.toStdString());
+			}
+		} else {
+			auto key = std::make_shared<libcdoc::EncKeySymmetric>(libcdoc::Crypto::random(), libcdoc::Crypto::random(), kdf_iter);
+			key->label = label.toStdString();
+			keys.push_back(key);
+			if (writer->encrypt(fileName.toStdString(), files, keys)) {
+				// Encryption successful, open new reader
+				reader = createCDocReader(fileName.toStdString());
+				if (!reader) return;
+				writer.reset();
+			}
+		}
+	} else {
+		qWarning() << "Neither reader nor writer is initialized";
 	}
 }
 
@@ -105,41 +254,44 @@ CDocumentModel::CDocumentModel(CryptoDoc::Private *doc)
 
 bool CDocumentModel::addFile(const QString &file, const QString &mime)
 {
-	if( d->isEncryptedWarning() )
-		return false;
+	if(d->warnIfNotWritable()) return false;
 
 	QFileInfo info(file);
-	if(info.size() == 0)
-	{
+	if(info.size() == 0) {
 		WarningDialog::show(DocumentModel::tr("Cannot add empty file to the container."));
 		return false;
 	}
-	if(d->cdoc->version() == 1 && info.size() > 120*1024*1024)
-	{
+	if(d->writer->getVersion() == 1 && info.size() > 120*1024*1024) {
 		WarningDialog::show(tr("Added file(s) exceeds the maximum size limit of the container (∼120MB). "
 			"<a href='https://www.id.ee/en/article/encrypting-large-120-mb-files/'>Read more about it</a>"));
 		return false;
 	}
-
-	QString fileName(info.fileName());
-	if(std::any_of(d->cdoc->files.cbegin(), d->cdoc->files.cend(),
-			[&fileName](const auto &containerFile) { return containerFile.name == fileName; }))
-	{
+	bool present = false;
+	for (auto file : d->files) {
+		if (file.name == info.fileName().toStdString()) {
+			present = true;
+			break;
+		}
+	}
+	if (present) {
 		WarningDialog::show(DocumentModel::tr("Cannot add the file to the envelope. File '%1' is already in container.")
-							.arg(FileDialog::normalized(fileName)));
+							.arg(FileDialog::normalized(info.fileName())));
 		return false;
 	}
 
-	auto data = std::make_unique<QFile>(file);
-	data->open(QFile::ReadOnly);
-	d->cdoc->files.push_back({
-		QFileInfo(file).fileName(),
-		QStringLiteral("D%1").arg(d->cdoc->files.size()),
-		mime,
-		data->size(),
-		std::move(data),
-	});
-	emit added(FileDialog::normalized(d->cdoc->files.back().name));
+	std::filesystem::path p(file.toStdString());
+	int64_t size = std::filesystem::file_size(p);
+	auto data = std::make_shared<std::ifstream>(file.toStdString());
+	std::string name = QFileInfo(file).fileName().toStdString();
+	std::string id = QStringLiteral("D%1").arg(d->files.size()).toStdString();
+	d->files.push_back({
+								 name,
+								 id,
+								 mime.toStdString(),
+								 size,
+								 data,
+							 });
+	emit added(FileDialog::normalized(QString::fromStdString(name)));
 	return true;
 }
 
@@ -150,11 +302,17 @@ void CDocumentModel::addTempReference(const QString &file)
 
 QString CDocumentModel::copy(int row, const QString &dst) const
 {
-	const CDoc::File &file = d->cdoc->files.at(row);
-	if( QFile::exists( dst ) )
-		QFile::remove( dst );
-	file.data->seek(0);
-	if(QFile f(dst); f.open(QFile::WriteOnly) && copyIODevice(file.data.get(), &f) == file.size)
+	auto files = [this, row] {
+		if (d->reader || d->writer) {
+			return d->files;
+		} else {
+			return std::vector<libcdoc::IOEntry>();
+		}
+	};
+	const libcdoc::IOEntry &file = d->getFiles().at(row);
+	if( QFile::exists(dst)) QFile::remove(dst);
+	file.stream->seekg(0);
+	if(QFile f(dst); f.open(QFile::WriteOnly) && copyIODevice(file.stream.get(), &f) == file.size)
 		return dst;
 	WarningDialog::show(tr("Failed to save file '%1'").arg(dst));
 	return {};
@@ -162,22 +320,22 @@ QString CDocumentModel::copy(int row, const QString &dst) const
 
 QString CDocumentModel::data(int row) const
 {
-	return FileDialog::normalized(d->cdoc->files.at(row).name);
+	return FileDialog::normalized(QString::fromStdString(d->getFiles().at(row).name));
 }
 
 quint64 CDocumentModel::fileSize(int row) const
 {
-	return d->cdoc->files.at(row).size;
+	return d->getFiles().at(row).size;
 }
 
 QString CDocumentModel::mime(int row) const
 {
-	return FileDialog::normalized(d->cdoc->files.at(row).mime);
+	return FileDialog::normalized(QString::fromStdString(d->getFiles().at(row).mime));
 }
 
 void CDocumentModel::open(int row)
 {
-	if(d->isEncrypted)
+	if(d->isEncrypted())
 		return;
 	QString path = FileDialog::tempPath(FileDialog::safeName(data(row)));
 	if(!verifyFile(path))
@@ -194,28 +352,27 @@ void CDocumentModel::open(int row)
 
 bool CDocumentModel::removeRow(int row)
 {
-	if(d->isEncryptedWarning())
+	if(d->warnIfNotWritable())
 		return false;
 
-	if(d->cdoc->files.empty() || row >= d->cdoc->files.size())
-	{
+	if(row >= d->files.size()) {
 		WarningDialog::show(DocumentModel::tr("Internal error"));
 		return false;
 	}
 
-	d->cdoc->files.erase(d->cdoc->files.cbegin() + row);
+	d->files.erase(d->files.begin() + row);
 	emit removed(row);
 	return true;
 }
 
 int CDocumentModel::rowCount() const
 {
-	return int(d->cdoc->files.size());
+	return int(d->getFiles().size());
 }
 
 QString CDocumentModel::save(int row, const QString &path) const
 {
-	if(d->isEncrypted)
+	if(d->isEncrypted())
 		return {};
 
 	int zone = FileDialog::fileZone(d->fileName);
@@ -225,141 +382,6 @@ QString CDocumentModel::save(int row, const QString &path) const
 		return {};
 	FileDialog::setFileZone(fileName, zone);
 	return fileName;
-}
-
-bool
-CKey::isTheSameRecipient(const CKey& other) const
-{
-	QByteArray this_key, other_key;
-	if (this->isCertificate()) {
-		const CKeyCert& ckc = static_cast<const CKeyCert&>(*this);
-		this_key = ckc.cert.publicKey().toDer();
-	}
-	if (other.isCertificate()) {
-		const CKeyCert& ckc = static_cast<const CKeyCert&>(other);
-		other_key = ckc.cert.publicKey().toDer();
-	}
-	if (this_key.isEmpty() || other_key.isEmpty()) return false;
-	return this_key == other_key;
-}
-
-bool
-CKey::isTheSameRecipient(const QSslCertificate &cert) const
-{
-	if (!isPKI()) return false;
-	const CKeyPKI& pki = static_cast<const CKeyPKI&>(*this);
-	QByteArray this_key = pki.rcpt_key;
-	QSslKey k = cert.publicKey();
-	QByteArray other_key = Crypto::toPublicKeyDer(k);
-	qDebug() << "This key:" << this_key.toHex();
-	qDebug() << "Other key:" << other_key.toHex();
-	if (this_key.isEmpty() || other_key.isEmpty()) return false;
-	return this_key == other_key;
-}
-
-CKeyCert::CKeyCert(Type _type, const QSslCertificate &c)
-	: CKeyPKI(_type)
-{
-	setCert(c);
-	label = [](const SslCertificate &c) {
-		QString cn = c.subjectInfo(QSslCertificate::CommonName);
-		QString gn = c.subjectInfo("GN");
-		QString sn = c.subjectInfo("SN");
-		if(!gn.isEmpty() || !sn.isEmpty())
-			cn = QStringLiteral("%1 %2 %3").arg(gn, sn, c.personalCode());
-
-		int certType = c.type();
-		if(certType & SslCertificate::EResidentSubType)
-			return QStringLiteral("%1 %2").arg(cn, CryptoDoc::tr("Digi-ID E-RESIDENT"));
-		if(certType & SslCertificate::DigiIDType)
-			return QStringLiteral("%1 %2").arg(cn, CryptoDoc::tr("Digi-ID"));
-		if(certType & SslCertificate::EstEidType)
-			return QStringLiteral("%1 %2").arg(cn, CryptoDoc::tr("ID-CARD"));
-		return cn;
-	}(c);
-}
-
-void CKeyCert::setCert(const QSslCertificate &c)
-{
-	cert = c;
-	QSslKey k = c.publicKey();
-	rcpt_key = Crypto::toPublicKeyDer(k);
-	qDebug() << "Set cert PK:" << rcpt_key.toHex();
-	pk_type = (k.algorithm() == QSsl::Rsa) ? PKType::RSA : PKType::ECC;
-}
-
-std::shared_ptr<CKeyCDoc1>
-CKeyCDoc1::newEmpty() {
-    return std::shared_ptr<CKeyCDoc1>(new CKeyCDoc1());
-}
-
-std::shared_ptr<CKeyCDoc1>
-CKeyCDoc1::fromCertificate(const QSslCertificate &cert) {
-    return std::shared_ptr<CKeyCDoc1>((CKeyCDoc1 *) new CKeyCert(Type::CDOC1, cert));
-}
-
-QHash<QString, QString> CKey::fromKeyLabel() const
-{
-    QHash<QString,QString> result;
-    QString rcpt(label);
-    if(!rcpt.startsWith(QLatin1String("data:"), Qt::CaseInsensitive))
-		return result;
-    QString payload = rcpt.mid(5);
-	QString mimeType;
-	QString encoding;
-	if(auto pos = payload.indexOf(','); pos != -1)
-	{
-		mimeType = payload.left(pos);
-		payload = payload.mid(pos + 1);
-		if(auto header = mimeType.split(';'); header.size() == 2)
-		{
-			mimeType = header.value(0);
-			encoding = header.value(1);
-		}
-	}
-	if(!mimeType.isEmpty() && mimeType != QLatin1String("application/x-www-form-urlencoded"))
-		return result;
-	if(encoding == QLatin1String("base64"))
-		payload = QByteArray::fromBase64(payload.toLatin1());
-	;
-	for(const auto &[key,value]: QUrlQuery(payload).queryItems(QUrl::FullyDecoded))
-		result[key.toLower()] = value;
-	if(!result.contains(QStringLiteral("type")) || !result.contains(QStringLiteral("v")))
-		result.clear();
-	return result;
-}
-
-QString CKey::toKeyLabel() const
-{
-    if (this->isCertificate()) {
-        return label;
-    }
-    CKeyCert *cd1 = (CKeyCert *) this;
-    if(cd1->cert.isNull())
-        return cd1->label;
-    QDateTime exp = cd1->cert.expiryDate();
-	if(Settings::CDOC2_USE_KEYSERVER)
-		exp = std::min(exp, QDateTime::currentDateTimeUtc().addMonths(6));
-	auto escape = [](QString data) { return data.replace(',', QLatin1String("%2C")); };
-	QString type = QStringLiteral("ID-card");
-    if(auto t = SslCertificate(cd1->cert).type(); t & SslCertificate::EResidentSubType)
-		type = QStringLiteral("Digi-ID E-RESIDENT");
-	else if(t & SslCertificate::DigiIDType)
-		type = QStringLiteral("Digi-ID");
-	QUrlQuery q;
-	q.setQueryItems({
-		{QStringLiteral("v"), QString::number(1)},
-		{QStringLiteral("type"), type},
-        {QStringLiteral("serial_number"), escape(cd1->cert.subjectInfo("serialNumber").join(','))},
-        {QStringLiteral("cn"), escape(cd1->cert.subjectInfo("CN").join(','))},
-		{QStringLiteral("server_exp"), QString::number(exp.toSecsSinceEpoch())},
-	});
-	return "data:" + q.query(QUrl::FullyEncoded);
-}
-
-std::shared_ptr<CKeyServer>
-CKeyServer::fromKey(QByteArray _key, PKType _pk_type) {
-	return std::shared_ptr<CKeyServer>(new CKeyServer(_key, _pk_type));
 }
 
 CryptoDoc::CryptoDoc( QObject *parent )
@@ -375,27 +397,30 @@ CryptoDoc::~CryptoDoc() { clear(); delete d; }
 bool
 CryptoDoc::supportsSymmetricKeys() const
 {
-	return d->cdoc->version() >= 2;
+	return d->writer && d->writer->getVersion() >= 2;
 }
 
-bool CryptoDoc::addKey(std::shared_ptr<CKey> key )
+bool CryptoDoc::addEncryptionKey(std::shared_ptr<libcdoc::EncKey> key )
 {
-	if(d->isEncryptedWarning())
+	if(d->warnIfNotWritable())
 		return false;
-	for (std::shared_ptr<CKey> k: d->cdoc->keys) {
+	for (std::shared_ptr<libcdoc::EncKey> k: d->keys) {
 		if (k->isTheSameRecipient(*key)) {
 			WarningDialog::show(tr("Key already exists"));
 			return false;
 		}
 	}
-	d->cdoc->keys.append(key);
+	d->keys.push_back(key);
 	return true;
 }
 
 bool CryptoDoc::canDecrypt(const QSslCertificate &cert)
 {
-	CKey::DecryptionStatus dec_stat = d->cdoc->canDecrypt(cert);
-	return (dec_stat == CKey::CAN_DECRYPT) || (dec_stat == CKey::DecryptionStatus::NEED_KEY);
+	if (!d->reader) return false;
+	QByteArray der = cert.toDer();
+	libcdoc::Certificate cc(std::vector<uint8_t>(der.cbegin(), der.cend()));
+	libcdoc::CKey::DecryptionStatus dec_stat = d->reader->canDecrypt(cc);
+	return (dec_stat == libcdoc::CKey::CAN_DECRYPT) || (dec_stat == libcdoc::CKey::DecryptionStatus::NEED_KEY);
 }
 
 void CryptoDoc::clear( const QString &file )
@@ -407,38 +432,37 @@ void CryptoDoc::clear( const QString &file )
 		QFile::remove(f);
 	}
 	d->tempFiles.clear();
-	d->isEncrypted = false;
+	d->reader.reset();
 	d->fileName = file;
-	if(Settings::CDOC2_DEFAULT)
-		d->cdoc = std::make_unique<CDoc2>();
-	else
-		d->cdoc = std::make_unique<CDoc1>();
+	d->writer = d->createCDocWriter();
 }
 
 ContainerState CryptoDoc::state() const
 {
-	return d->isEncrypted ? EncryptedContainer : UnencryptedContainer;
+	return d->isEncrypted() ? EncryptedContainer : UnencryptedContainer;
 }
 
-bool CryptoDoc::decrypt(std::shared_ptr<CKey> key, const QByteArray& secret)
+bool
+CryptoDoc::decrypt(std::shared_ptr<libcdoc::CKey> key, const QByteArray& secret)
 {
-	if( d->fileName.isEmpty() )
-	{
+	if(d->fileName.isEmpty()) {
 		WarningDialog::show(tr("Container is not open"));
 		return false;
 	}
-	if(!d->isEncrypted)
+	if(!d->reader)
 		return true;
 
 	if (key == nullptr) {
-		key = d->cdoc->getDecryptionKey(qApp->signer()->tokenauth().cert());
+		QByteArray der = qApp->signer()->tokenauth().cert().toDer();
+		libcdoc::Certificate cc(std::vector<uint8_t>(der.cbegin(), der.cend()));
+		key = d->reader->getDecryptionKey(cc);
 	}
 	if((key == nullptr) || (key->isSymmetric() && secret.isEmpty())) {
 		WarningDialog::show(tr("You do not have the key to decrypt this document"));
 		return false;
 	}
 
-	if(d->cdoc->version() == 2 && (key->type == CKey::Type::SERVER) && !Settings::CDOC2_NOTIFICATION.isSet())
+	if(d->reader->getVersion() == 2 && (key->type == libcdoc::CKey::Type::SERVER) && !Settings::CDOC2_NOTIFICATION.isSet())
 	{
 		auto *dlg = new WarningDialog(tr("You must enter your PIN code twice in order to decrypt the CDOC2 container. "
 			"The first PIN entry is required for authentication to the key server referenced in the CDOC2 container. "
@@ -456,22 +480,27 @@ bool CryptoDoc::decrypt(std::shared_ptr<CKey> key, const QByteArray& secret)
 		}
 	}
 
-	d->fmk = d->cdoc->getFMK(*key, secret);
+	std::vector<uint8_t> fmk = d->reader->getFMK(*key, std::vector<uint8_t>(secret.cbegin(), secret.cend()));
+	d->fmk = QByteArray(reinterpret_cast<const char *>(fmk.data()), fmk.size());
 #ifndef NDEBUG
 	qDebug() << "FMK (Transport key)" << d->fmk.toHex();
 #endif
 	if(d->fmk.isEmpty()) {
-		WarningDialog::show(tr("Failed to decrypt document. Please check your internet connection and network settings."), d->cdoc->lastError);
+		const std::string& msg = d->reader->getLastError();
+		WarningDialog::show(tr("Failed to decrypt document. Please check your internet connection and network settings."), QString::fromStdString(msg));
 		return false;
 	}
 
 	d->waitForFinished();
-	if(d->isEncrypted)
-		WarningDialog::show(tr("Error parsing document"));
-	if(!d->cdoc->lastError.isEmpty())
-		WarningDialog::show(d->cdoc->lastError);
-
-	return !d->isEncrypted;
+	if(d->reader) {
+		const std::string& msg = d->reader->getLastError();
+		if (msg.empty()) {
+			WarningDialog::show(tr("Error parsing document"));
+		} else {
+			WarningDialog::show(QString::fromStdString(msg));
+		}
+	}
+	return !d->isEncrypted();
 }
 
 DocumentModel* CryptoDoc::documentModel() const { return d->documents; }
@@ -484,10 +513,10 @@ bool CryptoDoc::encrypt( const QString &filename, const QString& label, const QB
 		return false;
 	}
 	// I think the correct semantics is to fail if container is already encrypted
-	if(d->isEncrypted) return false;
+	if(d->reader) return false;
 	if (secret.isEmpty()) {
 		// Encrypt for address list
-		if(d->cdoc->keys.isEmpty())
+		if(d->keys.empty())
 		{
 			WarningDialog::show(tr("No keys specified"));
 			return false;
@@ -495,29 +524,36 @@ bool CryptoDoc::encrypt( const QString &filename, const QString& label, const QB
 	} else {
 		// Encrypt with symmetric key
 		d->label = label;
-		d->secret = secret;
+		d->crypto.secret = std::vector<uint8_t>(secret.cbegin(), secret.cend());
 		d->kdf_iter = kdf_iter;
 	}
 	d->waitForFinished();
 	d->label.clear();
-	d->secret.clear();
-	if(d->isEncrypted)
+	d->crypto.secret.clear();
+	if(d->isEncrypted()) {
 		open(d->fileName);
-	else
-		WarningDialog::show(tr("Failed to encrypt document. Please check your internet connection and network settings."), d->cdoc->lastError);
-	return d->isEncrypted;
+	} else {
+		WarningDialog::show(tr("Failed to encrypt document. Please check your internet connection and network settings."),
+							QString::fromStdString(d->writer->getLastError()));
+	}
+	return d->isEncrypted();
 }
 
 QString CryptoDoc::fileName() const { return d->fileName; }
 
-QList<std::shared_ptr<CKey>> CryptoDoc::keys() const
+const std::vector<std::shared_ptr<libcdoc::CKey>>&
+CryptoDoc::keys() const
 {
-	return d->cdoc->keys;
+	if (d->writer) {
+		return d->keys;
+	} else {
+		return d->reader->getKeys();
+	}
 }
 
 bool CryptoDoc::move(const QString &to)
 {
-	if(!d->isEncrypted)
+	if(!d->isEncrypted())
 	{
 		d->fileName = to;
 		return true;
@@ -529,29 +565,23 @@ bool CryptoDoc::move(const QString &to)
 bool CryptoDoc::open( const QString &file )
 {
 	clear(file);
-	if (CDoc2::isCDoc2File(d->fileName)) {
-		d->cdoc = CDoc2::load(d->fileName);
-	} else if (CDoc1::isCDoc1File(d->fileName)) {
-		d->cdoc = CDoc1::load(d->fileName);
-	} else {
-		WarningDialog::show(tr("Failed to open document"), tr("Unsupported file format"));
-		return false;
-	}
-	d->isEncrypted = bool(d->cdoc);
+	d->reader = d->createCDocReader(file.toStdString());
+	if (!d->reader) return false;
+	d->writer.reset();
 	// fixme: This seems wrong
-	if(!d->isEncrypted)
-	{
-		WarningDialog::show(tr("Failed to open document"), d->cdoc->lastError);
-		return false;
-	}
+	//if(!d->isEncrypted()) {
+	//	WarningDialog::show(tr("Failed to open document"),
+	//						QString::fromStdString(d->cdoc->lastError));
+	//	return false;
+	//}
 	Application::addRecent( file );
 	return true;
 }
 
 void CryptoDoc::removeKey( int id )
 {
-	if(!d->isEncryptedWarning())
-		d->cdoc->keys.removeAt(id);
+	if(!d->warnIfNotWritable())
+		d->keys.erase(d->keys.begin() + id);
 }
 
 bool CryptoDoc::saveCopy(const QString &filename)

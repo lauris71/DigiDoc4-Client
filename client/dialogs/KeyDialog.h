@@ -19,14 +19,14 @@
 
 #pragma once
 
-#include <QDialog>
+#include <libcdoc/cdoc.h>
 
-struct CKey;
+#include <QDialog>
 
 class KeyDialog final: public QDialog
 {
 	Q_OBJECT
 
 public:
-	KeyDialog(const CKey &key, QWidget *parent = nullptr);
+	KeyDialog(const libcdoc::CKey &key, QWidget *parent = nullptr);
 };

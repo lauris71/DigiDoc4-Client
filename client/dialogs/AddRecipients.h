@@ -41,7 +41,7 @@ public:
 	explicit AddRecipients(ItemList* itemList, QWidget *parent = nullptr);
 	~AddRecipients() final;
 
-	QList<std::shared_ptr<CKey>> keys();
+	QList<std::shared_ptr<libcdoc::CKey>> keys();
 	bool isUpdated() const;
 
 private:
@@ -50,7 +50,7 @@ private:
 	void addRecipientFromFile();
 	void addRecipientFromHistory();
 	AddressItem * addRecipientToLeftPane(const QSslCertificate& cert);
-	bool addRecipientToRightPane(std::shared_ptr<CKey> key, bool update = true);
+	bool addRecipientToRightPane(std::shared_ptr<libcdoc::CKey> key, bool update = true);
 	void addRecipientToRightPane(AddressItem *leftItem, bool update = true);
 	void addSelectedCerts(const QList<HistoryCertData>& selectedCertData);
 	void enableRecipientFromCard();
@@ -64,7 +64,7 @@ private:
 
 	Ui::AddRecipients *ui;
 	QHash<QSslCertificate, AddressItem *> leftList;
-	QList<std::shared_ptr<CKey>> rightList;
+	QList<std::shared_ptr<libcdoc::CKey>> rightList;
 	LdapSearch *ldap_person, *ldap_corp;
 	bool updated = false;
 

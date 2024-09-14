@@ -3,6 +3,7 @@
 #include "CDOC1Writer.h"
 #include "cdoc2.h"
 #include <Crypto.h>
+#include <iostream>
 #include "CDOC1Reader.h"
 
 
@@ -22,11 +23,13 @@ CryptoBackend::getKeyMaterial(std::vector<uint8_t>& key_material, const std::vec
 {
 	std::vector<uint8_t> secret;
 	if (!getSecret(secret, label)) return false;
+	std::cerr << "Secret: " << Crypto::toHex(secret) << std::endl;
 	if (kdf_iter > 0) {
 		key_material = libcdoc::Crypto::pbkdf2_sha256(secret, pw_salt, kdf_iter);
 	} else {
 		key_material = std::move(secret);
 	}
+	std::cerr << "Key material: " << Crypto::toHex(key_material) << std::endl;
 	return !key_material.empty();
 }
 
@@ -37,7 +40,9 @@ CryptoBackend::getKEK(std::vector<uint8_t>& kek, const std::vector<uint8_t>& sal
 	std::vector<uint8_t> key_material;
 	if (!getKeyMaterial(key_material, pw_salt, kdf_iter, label)) return false;
 	std::vector<uint8_t> tmp = libcdoc::Crypto::extract(key_material, salt, 32);
+	std::cerr << "Extract: " << Crypto::toHex(tmp) << std::endl;
 	kek = libcdoc::Crypto::expand(tmp, std::vector<uint8_t>(info.cbegin(), info.cend()), 32);
+	std::cerr << "KEK: " << Crypto::toHex(kek) << std::endl;
 	return !kek.empty();
 }
 

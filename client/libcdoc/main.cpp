@@ -1,12 +1,16 @@
+#include <cstring>
+#include <iostream>
+#include <fstream>
+#include <map>
+#include <memory>
+
 #include "CDOC1Writer.h"
 #include "CDOC1Reader.h"
 #include "Token.h"
 #include "DDOCReader.h"
+#include "Crypto.h"
+#include "cdoc.h"
 
-#include <cstring>
-#include <iostream>
-#include <fstream>
-#include <memory>
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -71,8 +75,136 @@ static void writeFile(const std::string &path, const std::vector<unsigned char> 
 	f.write((const char*)data.data(), std::streamsize(data.size()));
 }
 
-int main(int argc, char *argv[])
+struct Recipient {
+	enum Type { CERT, PASSWORD, KEY };
+	Type type;
+	std::string label;
+	std::vector<uint8_t> data;
+};
+
+static void
+print_usage(std::ostream& ofs, int exit_value)
 {
+	ofs
+		//<< "cdoc-tool encrypt -r X509DerRecipientCert [-r X509DerRecipientCert [...]] InFile [InFile [...]] OutFile" << std::endl
+		<< "cdoc-tool encrypt [--rcpt-cert LABEL X509DERFILE] [--rcpt-key LABEL SECRED [--rcpt-pwd LABEL PASSWORD] [...] [--file INFILE] [...] --out OUTFILE" << std::endl
+#ifdef _WIN32
+		<< "cdoc-tool decrypt win [ui|noui] pin InFile OutFolder" << std::endl
+#endif
+		<< "cdoc-tool decrypt pkcs11 path/to/so pin InFile OutFolder" << std::endl
+		<< "cdoc-tool decrypt pkcs12 path/to/pkcs12 pin InFile OutFolder" << std::endl;
+	exit(exit_value);
+}
+
+static std::vector<uint8_t>
+fromHex(const std::string& hex) {
+	std::vector<uint8_t> val(hex.size() / 2);
+	char c[3] = {0};
+	for (size_t i = 0; i < (hex.size() & 0xfffffffe); i += 2) {
+		std::copy(hex.cbegin() + i, hex.cbegin() + i + 2, c);
+		std::cerr << c << std::endl;
+		val[i / 2] = (uint8_t) strtol(c, NULL, 16);
+	}
+	std::cerr << libcdoc::Crypto::toHex(val) << std::endl;
+	return std::move(val);
+}
+
+static std::vector<uint8_t>
+fromStr(const std::string& str) {
+	return std::vector<uint8_t>(str.cbegin(), str.cend());
+}
+
+struct ToolConf : public libcdoc::Configuration {
+	std::string getValue(const std::string& param) override final {
+		return "false";
+	}
+};
+
+struct ToolCrypto : public libcdoc::CryptoBackend {
+	const std::map<std::string,std::vector<uint8_t>>& _secrets;
+	ToolCrypto(const std::map<std::string,std::vector<uint8_t>>& secrets) : _secrets(secrets) {}
+	std::vector<uint8_t> decryptRSA(const std::vector<uint8_t> &data, bool oaep) const override final { return {}; }
+	std::vector<uint8_t> deriveConcatKDF(const std::vector<uint8_t> &publicKey, const std::string &digest, int keySize,
+		const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo) const override final { return {}; }
+	std::vector<uint8_t> deriveHMACExtract(const std::vector<uint8_t> &publicKey, const std::vector<uint8_t> &salt, int keySize) const override final { return {}; }
+	bool getSecret(std::vector<uint8_t>& secret, const std::string& label) override final {
+		secret =_secrets.at(label);
+		return !secret.empty();
+	}
+};
+
+int
+encrypt(int argc, char *argv[])
+{
+	std::cerr << "Encrypting" << std::endl;
+	std::vector<Recipient> rcpts;
+	std::vector<std::string> files;
+	std::string out;
+	for (int i = 0; i < argc; i++) {
+		if (!strcmp(argv[i], "--rcpt-cert") && ((i + 2) <= argc)) {
+			rcpts.push_back({Recipient::CERT, argv[i + 1], readFile(toUTF8(argv[i + 2]))});
+			i += 2;
+		} else if (!strcmp(argv[i], "--rcpt-pwd") && ((i + 2) <= argc)) {
+			rcpts.push_back({Recipient::PASSWORD, argv[i + 1], fromStr(argv[i + 2])});
+			i += 2;
+		} else if (!strcmp(argv[i], "--rcpt-key") && ((i + 2) <= argc)) {
+			rcpts.push_back({Recipient::KEY, argv[i + 1], fromHex(argv[i + 2])});
+			i += 2;
+		} else if (!strcmp(argv[i], "--file") && ((i + 1) <= argc)) {
+			files.push_back(argv[i + 1]);
+			i += 1;
+		} else if (!strcmp(argv[i], "--out") && ((i + 1) <= argc)) {
+			out = argv[i + 1];
+			i += 1;
+		} else {
+			print_usage(std::cerr, 1);
+		}
+	}
+	if (rcpts.empty() || files.empty() || out.empty()) print_usage(std::cerr, 1);
+	std::vector<std::shared_ptr<libcdoc::CKey>> keys;
+	std::map<std::string,std::vector<uint8_t>> secrets;
+	for (const Recipient& r : rcpts) {
+		libcdoc::CKey *key = nullptr;
+		if (r.type == Recipient::Type::CERT) {
+			key = new libcdoc::CKeyCert(r.label, r.data);
+			secrets[r.label] = {};
+		} else if (r.type == Recipient::Type::KEY) {
+			key = new libcdoc::CKeySymmetric(libcdoc::Crypto::random(), {}, 0);
+			key->label = r.label;
+			secrets[r.label] = r.data;
+		} else if (r.type == Recipient::Type::PASSWORD) {
+			key = new libcdoc::CKeySymmetric(libcdoc::Crypto::random(), libcdoc::Crypto::random(), 65535);
+			key->label = r.label;
+			secrets[r.label] = r.data;
+		}
+		keys.push_back(std::shared_ptr<libcdoc::CKey>(key));
+	}
+	std::vector<libcdoc::IOEntry> entries;
+	for (const std::string& file : files) {
+		std::ifstream *ifs = new std::ifstream(file);
+		ifs->seekg(0, std::ios_base::seekdir::end);
+		size_t size = ifs->tellg();
+		ifs->seekg(0);
+		entries.push_back({file, "id", "application/octet-stream", (int64_t) size, nullptr});
+		entries.back().stream = std::shared_ptr<std::istream>(ifs);
+	}
+	ToolConf conf;
+	ToolCrypto crypto(secrets);
+	libcdoc::CDocWriter *writer = libcdoc::CDocWriter::createWriter(2, out, &conf, &crypto, nullptr);
+
+	writer->encrypt(out, entries, keys);
+
+	return 0;
+}
+
+int
+main(int argc, char *argv[])
+{
+	if (argc < 2) print_usage(std::cerr, 1);
+	std::cerr << "Command: " << argv[1] << std::endl;
+	if (!strcmp(argv[1], "encrypt")) {
+		return encrypt(argc - 2, argv + 2);
+	}
 	if(argc >= 5 && strcmp(argv[1], "encrypt") == 0)
 	{
 #if 0
@@ -119,13 +251,7 @@ int main(int argc, char *argv[])
 	}
 	else
 	{
-		std::cout
-			<< "cdoc-tool encrypt -r X509DerRecipientCert [-r X509DerRecipientCert [...]] InFile [InFile [...]] OutFile" << std::endl
-#ifdef _WIN32
-			<< "cdoc-tool decrypt win [ui|noui] pin InFile OutFolder" << std::endl
-#endif
-			<< "cdoc-tool decrypt pkcs11 path/to/so pin InFile OutFolder" << std::endl
-			<< "cdoc-tool decrypt pkcs12 path/to/pkcs12 pin InFile OutFolder" << std::endl;
+		print_usage(std::cout, 0);
 	}
 	return 0;
 }

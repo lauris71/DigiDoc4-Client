@@ -638,13 +638,13 @@ CDoc2Writer::encrypt(std::ostream& ofs, libcdoc::MultiDataSource& src, const std
 				std::vector<uint8_t> kek = libcdoc::Crypto::expand(kekPm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), fmk.size());
 				std::vector<uint8_t> xor_key = libcdoc::Crypto::xor_data(fmk, kek);
 	#ifndef NDEBUG
-				std::cerr << "info" << libcdoc::Crypto::toHex(std::vector<uint8_t>(info_str.cbegin(), info_str.cend()));
-				std::cerr << "publicKeyDer" << libcdoc::Crypto::toHex(pki.rcpt_key);
-				std::cerr << "ephPublicKeyDer" << libcdoc::Crypto::toHex(ephPublicKeyDer);
-				std::cerr << "sharedSecret" << libcdoc::Crypto::toHex(sharedSecret);
-				std::cerr << "kekPm" << libcdoc::Crypto::toHex(kekPm);
-				std::cerr << "kek" << libcdoc::Crypto::toHex(kek);
-				std::cerr << "xor" << libcdoc::Crypto::toHex(xor_key);
+				std::cerr << "info" << libcdoc::Crypto::toHex(std::vector<uint8_t>(info_str.cbegin(), info_str.cend())) << std::endl;
+				std::cerr << "publicKeyDer" << libcdoc::Crypto::toHex(pki.rcpt_key) << std::endl;
+				std::cerr << "ephPublicKeyDer" << libcdoc::Crypto::toHex(ephPublicKeyDer) << std::endl;
+				std::cerr << "sharedSecret" << libcdoc::Crypto::toHex(sharedSecret) << std::endl;
+				std::cerr << "kekPm" << libcdoc::Crypto::toHex(kekPm) << std::endl;
+				std::cerr << "kek" << libcdoc::Crypto::toHex(kek) << std::endl;
+				std::cerr << "xor" << libcdoc::Crypto::toHex(xor_key) << std::endl;
 	#endif
 				if(!conf->getBoolean(libcdoc::Configuration::USE_KEYSERVER)) {
 					auto eccPublicKey = cdoc20::recipients::CreateECCPublicKeyCapsule(builder,
@@ -721,8 +721,8 @@ CDoc2Writer::encrypt(std::ostream& ofs, libcdoc::MultiDataSource& src, const std
 	std::vector<uint8_t> headerHMAC = libcdoc::Crypto::sign_hmac(hhk, header);
 	std::vector<uint8_t> nonce = libcdoc::Crypto::random(CDoc2Reader::NONCE_LEN);
 #ifndef NDEBUG
-	std::cerr << "hmac" << libcdoc::Crypto::toHex(headerHMAC);
-	std::cerr << "nonce" << libcdoc::Crypto::toHex(nonce);
+	std::cerr << "hmac" << libcdoc::Crypto::toHex(headerHMAC) << std::endl;
+	std::cerr << "nonce" << libcdoc::Crypto::toHex(nonce) << std::endl;
 #endif
 	libcdoc::Crypto::Cipher enc(EVP_chacha20_poly1305(), std::vector<uint8_t>(cek.cbegin(), cek.cend()), std::vector<uint8_t>(nonce.cbegin(), nonce.cend()), true);
 	std::vector<uint8_t> aad(CDoc2Reader::PAYLOAD.cbegin(), CDoc2Reader::PAYLOAD.cend());
@@ -747,7 +747,7 @@ CDoc2Writer::encrypt(std::ostream& ofs, libcdoc::MultiDataSource& src, const std
 	}
 	std::vector<uint8_t> tag = enc.tag();
 #ifndef NDEBUG
-	std::cerr << "tag" << libcdoc::Crypto::toHex(tag);
+	std::cerr << "tag" << libcdoc::Crypto::toHex(tag) << std::endl;
 #endif
 	ofs.write((const char *) tag.data(), tag.size());
 	ofs.flush();

@@ -86,7 +86,7 @@ CDOC1Reader::getDecryptionKey(const libcdoc::Certificate &cert)
 }
 
 std::vector<uint8_t>
-CDOC1Reader::getFMK(const libcdoc::CKey &key, const std::vector<uint8_t>& secret)
+CDOC1Reader::getFMK(const libcdoc::CKey &key)
 {
 	if (key.type != libcdoc::CKey::Type::CDOC1) {
 		setLastError(t_("Not a CDoc1 key"));

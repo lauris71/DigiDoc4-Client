@@ -18,7 +18,7 @@ public:
 	uint32_t getVersion() override final { return 1; }
 	libcdoc::CKey::DecryptionStatus canDecrypt(const libcdoc::Certificate &cert) override final;
 	std::shared_ptr<libcdoc::CKey> getDecryptionKey(const libcdoc::Certificate &cert) override final;
-	std::vector<uint8_t> getFMK(const libcdoc::CKey &key, const std::vector<uint8_t>& secret) override final;
+	std::vector<uint8_t> getFMK(const libcdoc::CKey &key) override final;
 
 	bool decryptPayload(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer *dst) override final;
 

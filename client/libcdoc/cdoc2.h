@@ -22,7 +22,7 @@ public:
 
 	const std::vector<std::shared_ptr<libcdoc::CKey>>& getKeys() override final { return keys; }
 
-	std::vector<uint8_t> getFMK(const libcdoc::CKey &key, const std::vector<uint8_t>& secret) final;
+	std::vector<uint8_t> getFMK(const libcdoc::CKey &key) override final;
 private:
 	std::vector<std::shared_ptr<libcdoc::CKey>> keys;
 

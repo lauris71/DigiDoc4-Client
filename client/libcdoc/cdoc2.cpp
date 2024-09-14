@@ -14,8 +14,6 @@
 
 #include "cdoc2.h"
 
-static constexpr uint32_t TAG_SIZE = 16;
-
 const std::string CDoc2Reader::LABEL = "CDOC\x02";
 const std::string CDoc2Reader::CEK = "CDOC20cek";
 const std::string CDoc2Reader::HMAC = "CDOC20hmac";
@@ -31,26 +29,30 @@ struct TaggedSource : public libcdoc::DataSource {
 	libcdoc::DataSource *_src;
 	bool _owned;
 
-	TaggedSource(libcdoc::DataSource *src, bool take_ownership) : _src(src), _owned(take_ownership) {
-		tag.resize(TAG_SIZE);
-		_src->read(tag.data(), TAG_SIZE);
+	TaggedSource(libcdoc::DataSource *src, bool take_ownership, size_t tag_size) : tag(tag_size), _src(src), _owned(take_ownership) {
+		tag.resize(tag.size());
+		_src->read(tag.data(), tag.size());
 	}
 	~TaggedSource() {
 		if (_owned) delete(_src);
 	}
 
 	bool seek(size_t pos) override final {
-		return _src->seek(pos);
+		if (_src->seek(pos)) {
+			_src->read(tag.data(), tag.size());
+			return true;
+		}
+		return false;
 	}
 
 	size_t read(uint8_t *dst, size_t size) override final {
-		uint8_t tmp[TAG_SIZE];
+		uint8_t tmp[tag.size()];
 		size_t nread = _src->read(dst, size);
-		if (nread >= TAG_SIZE) {
-			std::copy(dst + nread - TAG_SIZE, dst + nread, tmp);
-			std::copy_backward(dst, dst + nread - TAG_SIZE, dst + nread);
+		if (nread >= tag.size()) {
+			std::copy(dst + nread - tag.size(), dst + nread, tmp);
+			std::copy_backward(dst, dst + nread - tag.size(), dst + nread);
 			std::copy(tag.cbegin(), tag.cend(), dst);
-			std::copy(tmp, tmp + TAG_SIZE, tag.begin());
+			std::copy(tmp, tmp + tag.size(), tag.begin());
 		} else {
 			std::copy(dst, dst + nread, tmp);
 			std::copy(tag.cbegin(), tag.cbegin() + nread, dst);
@@ -254,7 +256,7 @@ CDoc2Reader::decryptPayload(const std::vector<uint8_t>& fmk, libcdoc::MultiDataC
 		return false;
 	}
 
-	TaggedSource tgs(_src, false);
+	TaggedSource tgs(_src, false, 16);
 	libcdoc::CipherSource csrc(&tgs, false, &dec);
 	libcdoc::ZSource zsrc(&csrc);
 
@@ -272,7 +274,7 @@ CDoc2Reader::decryptPayload(const std::vector<uint8_t>& fmk, libcdoc::MultiDataC
 }
 
 std::vector<uint8_t>
-CDoc2Reader::getFMK(const libcdoc::CKey &key, const std::vector<uint8_t>& secret)
+CDoc2Reader::getFMK(const libcdoc::CKey &key)
 {
 	setLastError({});
 	std::vector<uint8_t> kek;
@@ -280,25 +282,8 @@ CDoc2Reader::getFMK(const libcdoc::CKey &key, const std::vector<uint8_t>& secret
 		// Symmetric key
 		const libcdoc::CKeySymmetric &sk = static_cast<const libcdoc::CKeySymmetric&>(key);
 		std::string info_str = sk.getSaltForExpand();
-		if (sk.kdf_iter > 0) {
-#ifndef NDEBUG
-			std::cerr << "Password based symmetric key: " << key.label << std::endl;
-#endif
-			// KEY_MATERIAL = PBKDF2(PASSWORD, PASSWORD_SALT)
-			std::vector<uint8_t> key_material = libcdoc::Crypto::pbkdf2_sha256(secret, sk.pw_salt, sk.kdf_iter);
-#ifndef NDEBUG
-			std::cerr << "Key material: " << libcdoc::Crypto::toHex(key_material) << std::endl;
-#endif
-			// KEK = HKDF(SALT, KEY_MATERIAL)
-			std::vector<uint8_t> tmp = libcdoc::Crypto::extract(key_material, sk.salt, 32);
-			kek = libcdoc::Crypto::expand(tmp, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), 32);
-		} else {
-#ifndef NDEBUG
-			std::cerr << "Plain symmetric key: " << key.label << std::endl;
-#endif
-			std::vector<uint8_t> tmp = libcdoc::Crypto::extract(secret, sk.salt, 32);
-			kek = libcdoc::Crypto::expand(tmp, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), 32);
-		}
+
+		crypto->getKEK(kek, sk.salt, sk.pw_salt, sk.kdf_iter, sk.label, info_str);
 	} else {
 		// Public/private key
 		const libcdoc::CKeyPKI &pki = static_cast<const libcdoc::CKeyPKI&>(key);

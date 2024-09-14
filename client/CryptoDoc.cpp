@@ -22,7 +22,6 @@
 #include "CryptoDoc.h"
 
 #include "Application.h"
-#include "CDoc1.h"
 #include "Crypto.h"
 #include "TokenData.h"
 #include "QCryptoBackend.h"
@@ -480,7 +479,8 @@ CryptoDoc::decrypt(std::shared_ptr<libcdoc::CKey> key, const QByteArray& secret)
 		}
 	}
 
-	std::vector<uint8_t> fmk = d->reader->getFMK(*key, std::vector<uint8_t>(secret.cbegin(), secret.cend()));
+	d->crypto.secret.assign(secret.cbegin(), secret.cend());
+	std::vector<uint8_t> fmk = d->reader->getFMK(*key);
 	d->fmk = QByteArray(reinterpret_cast<const char *>(fmk.data()), fmk.size());
 #ifndef NDEBUG
 	qDebug() << "FMK (Transport key)" << d->fmk.toHex();
@@ -524,7 +524,7 @@ bool CryptoDoc::encrypt( const QString &filename, const QString& label, const QB
 	} else {
 		// Encrypt with symmetric key
 		d->label = label;
-		d->crypto.secret = std::vector<uint8_t>(secret.cbegin(), secret.cend());
+		d->crypto.secret.assign(secret.cbegin(), secret.cend());
 		d->kdf_iter = kdf_iter;
 	}
 	d->waitForFinished();

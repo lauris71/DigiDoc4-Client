@@ -40,7 +40,14 @@ struct Configuration {
  *
  */
 struct CryptoBackend {
-	virtual std::vector<uint8_t> decryptRSA(const std::vector<uint8_t> &data, bool oaep) const = 0;
+	static constexpr int OK = 0;
+	static constexpr int NOT_IMPLEMENTED = -200;
+	static constexpr int INVALID_PARAMS = -201;
+	static constexpr int OPENSSL_ERROR = -202;
+
+	virtual std::string getLastErrorStr(int code) const;
+
+	virtual int decryptRSA(std::vector<uint8_t>& result, const std::vector<uint8_t> &data, bool oaep) const = 0;
 	virtual std::vector<uint8_t> deriveConcatKDF(const std::vector<uint8_t> &publicKey, const std::string &digest, int keySize,
 		const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo) const = 0;
 	virtual std::vector<uint8_t> deriveHMACExtract(const std::vector<uint8_t> &publicKey, const std::vector<uint8_t> &salt, int keySize) const = 0;
@@ -50,12 +57,12 @@ struct CryptoBackend {
 	// HKDF expand info
 	// If kdf_iter is 0, secret is symmetric key, otherwise plaintext password
 	/**
-	 * @brief Get secret value (either password of symmetric key)
+	 * @brief Get secret value (either password or symmetric key)
 	 * @param secret the destination container for secret
 	 * @param label label the label of the capsule (key)
 	 * @return true if successful
 	 */
-	virtual bool getSecret(std::vector<uint8_t>& secret, const std::string& label) { return false; }
+	virtual int getSecret(std::vector<uint8_t>& secret, const std::string& label) { return NOT_IMPLEMENTED; }
 	/**
 	 * @brief Get CDoc2 key material for HKDF expansion
 	 * Fetches key material for a given symmetric key (either password or key-based).
@@ -66,7 +73,7 @@ struct CryptoBackend {
 	 * @param label the label of the capsule (key)
 	 * @return true if successful
 	 */
-	virtual bool getKeyMaterial(std::vector<uint8_t>& key_material, const std::vector<uint8_t> pw_salt, int32_t kdf_iter, const std::string& label);
+	virtual int getKeyMaterial(std::vector<uint8_t>& key_material, const std::vector<uint8_t> pw_salt, int32_t kdf_iter, const std::string& label);
 	/**
 	 * @brief Get CDoc2 KEK for symmetric key
 	 * Fetches KEK (Key Encryption Key) for a given symmetric key (either password or key-based).
@@ -76,14 +83,21 @@ struct CryptoBackend {
 	 * @param pw_salt the salt value for PBKDF
 	 * @param kdf_iter the number of KDF iterations. If kdf_iter is 0, the key is plain symmetric key instead of password.
 	 * @param label the label of the capsule (key)
-	 * @param info the salt for HKDF expand
+	 * @param expand_salt the salt for HKDF expand
 	 * @return true if successful
 	 */
-	virtual bool getKEK(std::vector<uint8_t>& kek, const std::vector<uint8_t>& salt, const std::vector<uint8_t> pw_salt, int32_t kdf_iter,
-				const std::string& label, const std::string& info);
+	virtual int getKEK(std::vector<uint8_t>& kek, const std::vector<uint8_t>& salt, const std::vector<uint8_t> pw_salt, int32_t kdf_iter,
+				const std::string& label, const std::string& expand_salt);
 };
 
 struct NetworkBackend {
+	static constexpr int OK = 0;
+	static constexpr int NOT_IMPLEMENTED = -300;
+	static constexpr int INVALID_PARAMS = -301;
+	static constexpr int NETWORK_ERROR = -302;
+
+	virtual std::string getLastErrorStr(int code) const;
+
 	virtual std::pair<std::string,std::string> sendKey (CDocWriter *writer, const std::vector<uint8_t> &recipient_id, const std::vector<uint8_t> &key_material, const std::string &type) = 0;
 	virtual std::vector<uint8_t> fetchKey (CDocReader *reader, const libcdoc::CKeyServer& key) = 0;
 };
@@ -135,7 +149,6 @@ public:
 
 	// Returns < 0 if not CDoc file
 	static int getCDocFileVersion(const std::string& path);
-	std::vector<IOEntry> decryptPayload(const std::vector<uint8_t> &fmk);
 
 	static CDocReader *createReader(const std::string& path, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network);
 protected:
@@ -153,8 +166,9 @@ public:
 	virtual ~CDocWriter() = default;
 
 	virtual uint32_t getVersion() = 0;
-	std::string getLastError() { return last_error; }
 	virtual bool encrypt(std::ostream& ofs, MultiDataSource& src, const std::vector<std::shared_ptr<libcdoc::EncKey>>& keys) = 0;
+
+	std::string getLastError() { return last_error; }
 
 	bool encrypt(const std::string& filename, const std::vector<IOEntry>& files, const std::vector<std::shared_ptr<libcdoc::EncKey>>& keys);
 	void setLastError(const std::string& message) { last_error = message; }

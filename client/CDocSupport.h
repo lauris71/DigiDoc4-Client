@@ -20,6 +20,9 @@
  *
  */
 
+#include <fstream>
+#include <sstream>
+
 #include <QtCore/QObject>
 
 #include <libcdoc/cdoc.h>
@@ -31,11 +34,11 @@ struct DDConfiguration : public libcdoc::Configuration {
 };
 
 struct DDCryptoBackend : public libcdoc::CryptoBackend {
-	std::vector<uint8_t> decryptRSA(const std::vector<uint8_t> &data, bool oaep) const final;
+	int decryptRSA(std::vector<uint8_t>& result, const std::vector<uint8_t> &data, bool oaep) const final;
 	std::vector<uint8_t> deriveConcatKDF(const std::vector<uint8_t> &publicKey, const std::string &digest, int keySize,
 		const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo) const final;
 	std::vector<uint8_t> deriveHMACExtract(const std::vector<uint8_t> &publicKey, const std::vector<uint8_t> &salt, int keySize) const final;
-	bool getSecret(std::vector<uint8_t>& secret, const std::string& label) final;
+	int getSecret(std::vector<uint8_t>& secret, const std::string& label) final;
 
 	std::vector<uint8_t> secret;
 
@@ -47,6 +50,25 @@ struct DDNetworkBackend : public libcdoc::NetworkBackend, private QObject {
 	std::vector<uint8_t> fetchKey(libcdoc::CDocReader *reader, const libcdoc::CKeyServer& key);
 
 	explicit DDNetworkBackend() = default;
+};
+
+struct TempListConsumer : public libcdoc::MultiDataConsumer {
+	static constexpr int64_t MAX_VEC_SIZE = 500L * 1024L * 1024L;
+
+	size_t _max_memory_size;
+	std::vector<libcdoc::IOEntry> files;
+	explicit TempListConsumer(size_t max_memory_size = 500L * 1024L * 1024L) : _max_memory_size(max_memory_size) {}
+	~TempListConsumer();
+	int64_t write(const uint8_t *src, size_t size) override final;
+	bool close() override final;
+	bool isError() override final;
+	bool open(const std::string& name, int64_t size) override final;
+private:
+	std::ostream *ofs = nullptr;
+
+	std::stringstream *sstream = nullptr;
+	std::ofstream *fstream = nullptr;
+	std::string tmp_name;
 };
 
 #endif // __CDOCSUPPORT_H__

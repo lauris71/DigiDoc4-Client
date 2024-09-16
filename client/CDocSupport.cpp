@@ -147,3 +147,64 @@ DDNetworkBackend::fetchKey(libcdoc::CDocReader *reader, const libcdoc::CKeyServe
 	QByteArray key_material = QByteArray::fromBase64(json.value(QLatin1String("ephemeral_key_material")).toString().toLatin1());
 	return std::vector<uint8_t>(key_material.cbegin(), key_material.cend());
 }
+
+TempListConsumer::~TempListConsumer()
+{
+	if (ofs) delete ofs;
+}
+
+int64_t
+TempListConsumer::write(const uint8_t *src, size_t size)
+{
+	if (!ofs) return OUTPUT_ERROR;
+	libcdoc::IOEntry& file = files.back();
+	ofs->write((const char *) src, size);
+	if (!ofs) return OUTPUT_STREAM_ERROR;
+	file.size += size;
+	return size;
+}
+
+bool
+TempListConsumer::close()
+{
+	libcdoc::IOEntry& file = files.back();
+	if (fstream) {
+		fstream->close();
+		file.stream = std::make_shared<std::ifstream>(tmp_name);
+		fstream = nullptr;
+		ofs = nullptr;
+		return true;
+	} else if (sstream) {
+		file.stream = std::shared_ptr<std::istream>(sstream);
+		file.stream->seekg(0);
+		sstream = nullptr;
+		ofs = nullptr;
+		return true;
+	} else {
+		return false;
+	}
+}
+
+bool
+TempListConsumer::isError()
+{
+	return sstream && sstream->bad();
+}
+
+bool
+TempListConsumer::open(const std::string& name, int64_t size)
+{
+	if (ofs) return false;
+	files.push_back({name, {}, "application/octet-stream", 0, nullptr});
+	if ((size < 0) || (size > MAX_VEC_SIZE)) {
+		char name[L_tmpnam];
+		// fixme:
+		std::tmpnam(name);
+		fstream = new std::ofstream(name);
+		ofs = fstream;
+	} else {
+		sstream = new std::stringstream(std::ios_base::out | std::ios_base::in);
+		ofs = sstream;
+	}
+	return true;
+}

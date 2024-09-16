@@ -96,7 +96,11 @@ CDOC1Reader::getFMK(const libcdoc::CKey &key)
 	setLastError({});
 	std::vector<uint8_t> decrypted_key;
 	if (ckey.pk_type == libcdoc::CKey::PKType::RSA) {
-		decrypted_key = crypto->decryptRSA(ckey.encrypted_fmk, false);
+		int result = crypto->decryptRSA(decrypted_key, ckey.encrypted_fmk, false);
+		if (result < 0) {
+			setLastError(crypto->getLastErrorStr(result));
+			return {};
+		}
 	} else {
 		decrypted_key = crypto->deriveConcatKDF(ckey.publicKey, ckey.concatDigest,
 				libcdoc::Crypto::keySize(ckey.method), ckey.AlgorithmID, ckey.PartyUInfo, ckey.PartyVInfo);
@@ -122,7 +126,7 @@ CDOC1Reader::decryptPayload(const std::vector<uint8_t>& fmk, libcdoc::MultiDataC
 		libcdoc::ZSource zsrc(&vsrc);
 		std::vector<uint8_t> tmp;
 		libcdoc::VectorConsumer vcons(tmp);
-		vcons.writeAll(&zsrc);
+		vcons.writeAll(zsrc);
 		data = std::move(tmp);
 		mime = d->properties["OriginalMimeType"];
 	}
@@ -133,7 +137,7 @@ CDOC1Reader::decryptPayload(const std::vector<uint8_t>& fmk, libcdoc::MultiDataC
 		return true;
 	}
 	dst->open(d->properties["Filename"], data.size());
-	dst->writeAll(&vsrc);
+	dst->writeAll(vsrc);
 	dst->close();
 	return true;
 }
@@ -143,14 +147,6 @@ CDOC1Reader::getKeys()
 {
 	return d->keys;
 }
-
-#if 0
-const std::vector<libcdoc::CDoc::File>&
-CDOC1Reader::getFiles()
-{
-	return d->cdfiles;
-}
-#endif
 
 /**
  * CDOC1Reader constructor.

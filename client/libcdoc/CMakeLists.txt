@@ -10,7 +10,7 @@ include(GNUInstallDirs)
 
 find_package(FlatBuffers CONFIG REQUIRED NAMES FlatBuffers Flatbuffers)
 set(SIGNCERT "" CACHE STRING "Common name of certificate to used sign binaries, empty skip signing" )
-set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 set(INSTALL_FRAMEWORKDIR /Library/Frameworks CACHE STRING "Framework install target")
 #set(PUBLIC_HEADER Token.h CDOCReader.h CDOCWriter.h ${CMAKE_BINARY_DIR}/CDOCExport.h)

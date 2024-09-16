@@ -151,6 +151,8 @@ struct CKeyPKI : public CKey {
 	PKType pk_type;
 	std::vector<uint8_t> rcpt_key;
 
+	// Get salt bitstring for HKDF expand method
+	std::string getSaltForExpand(const std::vector<uint8_t>& key_material) const;
 protected:
 	CKeyPKI(Type _type) : CKey(_type), pk_type(PKType::ECC) {};
 	CKeyPKI(Type _type, PKType _pk_type, const std::vector<uint8_t>& _rcpt_key) : CKey(_type), pk_type(_pk_type), rcpt_key(_rcpt_key) {};

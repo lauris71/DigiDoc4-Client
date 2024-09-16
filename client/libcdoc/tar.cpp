@@ -68,17 +68,17 @@ libcdoc::TAR::files(libcdoc::DataSource *src, bool &warning, libcdoc::MultiDataC
 }
 
 bool
-libcdoc::TAR::save(libcdoc::zostream& io, libcdoc::MultiDataSource& src)
+libcdoc::TAR::save(libcdoc::DataConsumer& dst, libcdoc::MultiDataSource& src)
 {
-	auto writeHeader = [&io](Header &h, uint64_t size) {
+	auto writeHeader = [&dst](Header &h, uint64_t size) {
 		h.chksum.fill(' ');
 		toOctal(h.size, size);
 		toOctal(h.chksum, h.checksum().first);
-		return io.writeData((const char*)&h, sizeof(Header)) == sizeof(Header);
+		return dst.write((const uint8_t *)&h, sizeof(Header)) == sizeof(Header);
 	};
-	auto writePadding = [&io](uint64_t size) {
+	auto writePadding = [&dst](uint64_t size) {
 		std::vector<char> pad(padding(size), 0);
-		return io.writeData(pad.data(), pad.size()) == pad.size();
+		return dst.write((const uint8_t *) pad.data(), pad.size()) == pad.size();
 	};
 	auto toPaxRecord = [](const std::string &keyword, const std::string &value) {
 		std::string record = ' ' + keyword + '=' + value + '\n';
@@ -102,7 +102,7 @@ libcdoc::TAR::save(libcdoc::zostream& io, libcdoc::MultiDataSource& src)
 			if(file.size > 07777777)
 				paxData += toPaxRecord("size", std::to_string(file.size));
 			if(!writeHeader(h, paxData.size()) ||
-				io.writeData(paxData.data(), paxData.size()) != paxData.size() ||
+				dst.write((const uint8_t *) paxData.data(), paxData.size()) != paxData.size() ||
 				!writePadding(paxData.size()))
 				return false;
 		}
@@ -114,13 +114,13 @@ libcdoc::TAR::save(libcdoc::zostream& io, libcdoc::MultiDataSource& src)
 		while (!src.isEof()) {
 			uint8_t buf[256];
 			size_t n_read = src.read(buf, 256);
-			io.writeData((const char *) buf, n_read);
+			dst.write(buf, n_read);
 			total_written += n_read;
 		}
 		writePadding(total_written);
 
 	}
 	Header empty = {};
-	return io.writeData((const char*)&empty, sizeof(Header)) == sizeof(Header) &&
-		io.writeData((const char*)&empty, sizeof(Header)) == sizeof(Header);
+	return dst.write((const uint8_t *)&empty, sizeof(Header)) == sizeof(Header) &&
+		dst.write((const uint8_t *)&empty, sizeof(Header)) == sizeof(Header);
 }

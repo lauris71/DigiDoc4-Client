@@ -80,6 +80,14 @@ CKeySymmetric::getSaltForExpand() const
 	return CDoc2Reader::KEK + cdoc20::header::EnumNameFMKEncryptionMethod(cdoc20::header::FMKEncryptionMethod::XOR) + label;
 }
 
+std::string
+CKeyPKI::getSaltForExpand(const std::vector<uint8_t>& key_material) const
+{
+	return CDoc2Reader::KEK + cdoc20::header::EnumNameFMKEncryptionMethod(cdoc20::header::FMKEncryptionMethod::XOR) +
+			std::string(rcpt_key.cbegin(), rcpt_key.cend()) +
+			std::string(key_material.cbegin(), key_material.cend());
+}
+
 CKeyCert::CKeyCert(Type _type, const std::string& _label, const std::vector<uint8_t> &c)
 	: CKeyPKI(_type)
 {

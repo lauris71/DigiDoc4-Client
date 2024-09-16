@@ -9,20 +9,17 @@ public:
 	static const std::string CEK, HMAC, KEK, KEKPREMASTER, PAYLOAD, SALT;
 	static constexpr int KEY_LEN = 32, NONCE_LEN = 12;
 
+	uint32_t getVersion() override final { return 2; }
+	const std::vector<std::shared_ptr<libcdoc::CKey>>& getKeys() override final { return keys; }
+	libcdoc::CKey::DecryptionStatus canDecrypt(const libcdoc::Certificate &cert) final;
+	std::shared_ptr<libcdoc::CKey> getDecryptionKey(const libcdoc::Certificate &cert) final;
+	std::vector<uint8_t> getFMK(const libcdoc::CKey &key) override final;
+	bool decryptPayload(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer *consumer) override final;
+
 	CDoc2Reader(libcdoc::DataSource *src, bool take_ownership = false);
 	CDoc2Reader(const std::string &path);
 
 	static bool isCDoc2File(const std::string& path);
-
-	uint32_t getVersion() override final { return 2; }
-	libcdoc::CKey::DecryptionStatus canDecrypt(const libcdoc::Certificate &cert) final;
-	std::shared_ptr<libcdoc::CKey> getDecryptionKey(const libcdoc::Certificate &cert) final;
-
-	bool decryptPayload(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer *consumer) override final;
-
-	const std::vector<std::shared_ptr<libcdoc::CKey>>& getKeys() override final { return keys; }
-
-	std::vector<uint8_t> getFMK(const libcdoc::CKey &key) override final;
 private:
 	std::vector<std::shared_ptr<libcdoc::CKey>> keys;
 

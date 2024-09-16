@@ -23,9 +23,10 @@ struct FileListConsumer : public libcdoc::MultiDataConsumer {
 	std::vector<DDOCReader::File> files;
 
 	explicit FileListConsumer() = default;
-	size_t write(const uint8_t *src, size_t size) override final {
+	int64_t write(const uint8_t *src, size_t size) override final {
 		DDOCReader::File& file = files.back();
 		file.data.assign(src, src + size);
+		return size;
 	}
 	bool close() override final {}
 	bool isError() override final { return false; }

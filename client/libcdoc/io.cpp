@@ -6,14 +6,46 @@
 
 namespace libcdoc {
 
+std::string
+DataConsumer::getLastErrorStr(int code) const
+{
+	switch (code) {
+	case OK:
+		return "";
+	case OUTPUT_ERROR:
+		return "DataConsumer: Output error";
+	case OUTPUT_STREAM_ERROR:
+		return "DataConsumer: Output stream error";
+	default:
+		break;
+	}
+	return "DataConsumer: Internal error";
+}
+
+std::string
+DataSource::getLastErrorStr(int code) const
+{
+	switch (code) {
+	case OK:
+		return "";
+	case INPUT_ERROR:
+		return "DataConsumer: Input error";
+	case INPUT_STREAM_ERROR:
+		return "DataConsumer: Intput stream error";
+	default:
+		break;
+	}
+	return "DataConsumer: Internal error";
+}
+
 int64_t
-DataConsumer::writeAll(DataSource *src)
+DataConsumer::writeAll(DataSource& src)
 {
 	static const size_t BUF_SIZE = 64 * 1024;
 	uint8_t buf[BUF_SIZE];
 	size_t total_read = 0;
-	while (!isError() && !src->isError() && !src->isEof()) {
-		size_t n_read = src->read(buf, BUF_SIZE);
+	while (!isError() && !src.isError() && !src.isEof()) {
+		size_t n_read = src.read(buf, BUF_SIZE);
 		write(buf, n_read);
 		total_read += n_read;
 	}
@@ -43,7 +75,7 @@ StreamListSource::StreamListSource(const std::vector<IOEntry>& files) : _files(f
 {
 }
 
-size_t
+int64_t
 StreamListSource::read(uint8_t *dst, size_t size)
 {
 	if ((_current < 0) || (_current >= _files.size())) return 0;

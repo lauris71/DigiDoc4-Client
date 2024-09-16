@@ -18,7 +18,7 @@ struct TAR {
 	explicit TAR() = default;
 
 	static bool files(libcdoc::DataSource *src, bool &warning, libcdoc::MultiDataConsumer *dst);
-	static bool save(libcdoc::zostream& io, libcdoc::MultiDataSource& src);
+	static bool save(libcdoc::DataConsumer& dst, libcdoc::MultiDataSource& src);
 
 	static std::vector<std::string> split (const std::string &s, char delim) {
 		std::vector<std::string> result;

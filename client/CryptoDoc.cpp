@@ -88,14 +88,15 @@ CryptoDoc::labelFromCertificate(const std::vector<uint8_t>& cert)
 	}(kcert);
 }
 
-std::vector<uint8_t>
-DDCryptoBackend::decryptRSA(const std::vector<uint8_t> &data, bool oaep) const
+int
+DDCryptoBackend::decryptRSA(std::vector<uint8_t>& result, const std::vector<uint8_t> &data, bool oaep) const
 {
 	QByteArray qdata(reinterpret_cast<const char *>(data.data()), data.size());
 	QByteArray qkek = qApp->signer()->decrypt([&qdata, &oaep](QCryptoBackend *backend) {
 			return backend->decrypt(qdata, oaep);
 	});
-	return std::vector<uint8_t>(qkek.cbegin(), qkek.cend());
+	result.assign(qkek.cbegin(), qkek.cend());
+	return (result.empty()) ? OPENSSL_ERROR : OK;
 }
 
 const QString SHA256_MTH = QStringLiteral("http://www.w3.org/2001/04/xmlenc#sha256");
@@ -131,11 +132,11 @@ DDCryptoBackend::deriveHMACExtract(const std::vector<uint8_t> &key_material, con
 	return std::vector<uint8_t>(qkekpm.cbegin(), qkekpm.cend());
 }
 
-bool
+int
 DDCryptoBackend::getSecret(std::vector<uint8_t>& _secret, const std::string& _label)
 {
 	_secret = secret;
-	return true;
+	return OK;
 }
 
 class CryptoDoc::Private final: public QThread
@@ -214,9 +215,10 @@ void CryptoDoc::Private::run()
 	if(reader) {
 		qCDebug(CRYPTO) << "Decrypt" << fileName;
 		std::vector<uint8_t> pfmk(fmk.cbegin(), fmk.cend());
-		//encrypted = !cdoc->decryptPayload(pfmk);
-		files = reader->decryptPayload(pfmk);
-		if (!files.empty()) {
+
+		TempListConsumer cons;
+		if (reader->decryptPayload(pfmk, &cons)) {
+			files = std::move(cons.files);
 			// Success, immediately create writer from reader
 			keys.clear();
 			writer = createCDocWriter();

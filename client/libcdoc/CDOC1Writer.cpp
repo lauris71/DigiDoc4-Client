@@ -195,7 +195,7 @@ bool CDOC1Writer::encrypt(std::ostream& ofs, libcdoc::MultiDataSource& src, cons
 				files.push_back(file);
 				std::vector<uint8_t> data;
 				libcdoc::VectorConsumer vcons(data);
-				src.readAll(&vcons);
+				src.readAll(vcons);
 				ddoc.addFile(file.name, "application/octet-stream", data);
 			}
 			ddoc.close();
@@ -207,7 +207,7 @@ bool CDOC1Writer::encrypt(std::ostream& ofs, libcdoc::MultiDataSource& src, cons
 			src.next(file);
 			std::vector<uint8_t> data;
 			libcdoc::VectorConsumer vcons(data);
-			src.readAll(&vcons);
+			src.readAll(vcons);
 			libcdoc::vectorwrapbuf databuf(data);
 			std::istream in(&databuf);
 			xmlw->writeBase64Element(Private::DENC, "CipherValue", libcdoc::Crypto::encrypt(d->method, transportKey, in));

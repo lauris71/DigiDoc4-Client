@@ -13,56 +13,134 @@
 
 namespace libcdoc {
 
-struct CipherSource : public DataSource {
-	DataSource *_src;
-	bool _owned;
+struct CipherConsumer : public ChainedConsumer {
+	bool _fail = false;
+	libcdoc::Crypto::Cipher *_cipher;
+	uint32_t _block_size;
+	CipherConsumer(DataConsumer *dst, bool take_ownership, libcdoc::Crypto::Cipher *cipher)
+		: ChainedConsumer(dst, take_ownership), _cipher(cipher), _block_size(cipher->blockSize()) {}
+	~CipherConsumer() {
+		if (_owned) delete _dst;
+	}
+
+	int64_t write(const uint8_t *src, size_t size) override final {
+		static constexpr uint64_t CHUNK_SIZE = 16LL * 1024LL;
+		if (_fail) return OUTPUT_ERROR;
+		if (size % _block_size) {
+			_fail = true;
+			return OUTPUT_ERROR;
+		}
+		uint8_t b[CHUNK_SIZE];
+		size_t processed = 0;
+		while (processed < size) {
+			size_t to_process = std::min<size_t>(size, CHUNK_SIZE);
+			std::copy(src + processed, src + processed + to_process, b);
+			if(!_cipher->update(b, int(to_process))) {
+				_fail = true;
+				return OUTPUT_ERROR;
+			}
+			int64_t n_written = _dst->write(b, to_process);
+			if (n_written != to_process) {
+				_fail = true;
+				return OUTPUT_ERROR;
+			}
+			processed += to_process;
+		}
+		return processed;
+	}
+
+	virtual bool isError() override final {
+		return _fail || ChainedConsumer::isError();
+	};
+};
+
+struct CipherSource : public ChainedSource {
 	bool _fail = false;
 	libcdoc::Crypto::Cipher *_cipher;
 	uint32_t _block_size;
 	CipherSource(DataSource *src, bool take_ownership, libcdoc::Crypto::Cipher *cipher)
-		: _src(src), _owned(take_ownership), _cipher(cipher), _block_size(cipher->blockSize()) {}
-	~CipherSource() {
-		if (_owned) delete _src;
-	}
+		: ChainedSource(src, take_ownership), _cipher(cipher), _block_size(cipher->blockSize()) {}
 
-	size_t read(uint8_t *dst, size_t size) override final {
-		if (_fail) return 0;
+	int64_t read(uint8_t *dst, size_t size) override final {
+		if (_fail) return INPUT_ERROR;
 		size_t n_read = _src->read(dst, _block_size * (size / _block_size));
 		if (n_read) {
 			if((n_read % _block_size) || !_cipher->update(dst, n_read)) {
 				_fail = true;
-				return 0;
+				return INPUT_ERROR;
 			}
 		}
 		return n_read;
 	}
 
 	virtual bool isError() override final {
-		return _fail || _src->isError();
-	};
-
-	virtual bool isEof() override final {
-		return _src->isEof();
+		return _fail || ChainedSource::isError();
 	};
 };
 
-struct ZSource : public DataSource {
+struct ZConsumer : public ChainedConsumer {
 	static constexpr uint64_t CHUNK = 16LL * 1024LL;
-	DataSource *_src;
-	bool _owned;
 	z_stream _s {};
 	bool _fail = false;
 	std::vector<uint8_t> buf;
 	int flush = Z_NO_FLUSH;
-	ZSource(DataSource *src, bool take_ownership = false) : _src(src), _owned(take_ownership) {
+	ZConsumer(DataConsumer *dst, bool take_ownership = false) : ChainedConsumer(dst, take_ownership) {
+		if (deflateInit(&_s, Z_DEFAULT_COMPRESSION) != Z_OK) _fail = true;
+	}
+	~ZConsumer() {
+		if (!_fail) deflateEnd(&_s);
+		if (_owned) delete _dst;
+	}
+
+	int64_t write(const uint8_t *src, size_t size) override final {
+		if (_fail) return OUTPUT_ERROR;
+		_s.next_in = (z_const Bytef *) src;
+		_s.avail_in = uInt(size);
+		std::array<uint8_t,CHUNK> out{};
+		while(true) {
+			_s.next_out = (Bytef *)out.data();
+			_s.avail_out = out.size();
+			int res = deflate(&_s, flush);
+			if(res == Z_STREAM_ERROR)
+				return OUTPUT_ERROR;
+			auto o_size = out.size() - _s.avail_out;
+			if(o_size > 0) {
+				int64_t result = _dst->write(out.data(), o_size);
+				if (result != o_size) return result;
+			}
+			if(res == Z_STREAM_END) break;
+			if(flush == Z_FINISH) continue;
+			if(_s.avail_in == 0) break;
+		}
+		return size;
+	}
+
+	virtual bool isError() override final {
+		return _fail || ChainedConsumer::isError();
+	};
+
+	bool close() override final {
+		flush = Z_FINISH;
+		write (nullptr, 0);
+		deflateEnd(&_s);
+		return ChainedConsumer::close();
+	}
+};
+
+struct ZSource : public ChainedSource {
+	static constexpr uint64_t CHUNK = 16LL * 1024LL;
+	z_stream _s {};
+	bool _fail = false;
+	std::vector<uint8_t> buf;
+	int flush = Z_NO_FLUSH;
+	ZSource(DataSource *src, bool take_ownership = false) : ChainedSource(src, take_ownership) {
 		if (inflateInit2(&_s, MAX_WBITS) != Z_OK) _fail = true;
 	}
 	~ZSource() {
 		if (!_fail) inflateEnd(&_s);
-		if (_owned) delete _src;
 	}
 
-	size_t read(uint8_t *dst, size_t size) override final {
+	int64_t read(uint8_t *dst, size_t size) override final {
 		if (_fail) return 0;
 		_s.next_out = (Bytef *) dst;
 		_s.avail_out = uInt (size);
@@ -86,102 +164,19 @@ struct ZSource : public DataSource {
 				break;
 			default:
 				_fail = true;
-				return 0;
+				return INPUT_ERROR;
 			}
 		}
 		return size - _s.avail_out;
 	}
 
 	virtual bool isError() override final {
-		return _fail || _src->isError();
+		return _fail || ChainedSource::isError();
 	};
 
 	virtual bool isEof() override final {
-		return (_s.avail_in == 0) && _src->isEof();
+		return (_s.avail_in == 0) && ChainedSource::isEof();
 	};
-};
-
-struct zostream
-{
-	static constexpr uint64_t CHUNK = 16LL * 1024LL;
-	std::ostream *io {};
-	libcdoc::Crypto::Cipher *cipher {};
-	z_stream s {};
-	std::vector<uint8_t> buf;
-	int flush = Z_NO_FLUSH;
-
-	zostream(std::ostream *_io, libcdoc::Crypto::Cipher *_cipher)
-		: io(_io),
-		cipher(_cipher)
-	{
-		if(deflateInit(&s, Z_DEFAULT_COMPRESSION) != Z_OK) io = nullptr;
-	}
-
-	~zostream()
-	{
-		if (io != nullptr) {
-			close();
-		}
-	}
-
-	void
-	close()
-	{
-		if (io != nullptr) {
-			flush = Z_FINISH;
-			writeData(nullptr, 0);
-			deflateEnd(&s);
-		}
-	}
-
-	bool
-	isEOF() const {
-		if (io == nullptr) return true;
-		return (s.avail_in == 0) && io->eof();
-	}
-
-	int64_t writeData(const char *data, int64_t len)
-	{
-		if (io == nullptr) return -1;
-		s.next_in = (z_const Bytef *)data;
-		s.avail_in = uInt(len);
-		std::array<uint8_t,CHUNK> out{};
-		while(true) {
-			s.next_out = (Bytef *)out.data();
-			s.avail_out = out.size();
-			int res = deflate(&s, flush);
-			if(res == Z_STREAM_ERROR)
-				return -1;
-			auto size = out.size() - s.avail_out;
-			if(size > 0) {
-				if(!cipher->update(out.data(), int(size))) return -1;
-				io->write((const char *) out.data(), size);
-				if (io->bad()) return -1;
-			}
-			if(res == Z_STREAM_END)
-				break;
-			if(flush == Z_FINISH)
-				continue;
-			if(s.avail_in == 0)
-				break;
-		}
-		return len;
-	}
-
-	int64_t copyFrom(std::istream *ifs) {
-		int64_t copied = 0;
-		while(!ifs->eof()) {
-			char buf[256];
-			ifs->read(buf, 256);
-			int len = ifs->gcount();
-			int written = 0;
-			while(written < len) {
-				written += writeData(buf + written, len - written);
-			}
-			copied += len;
-		}
-		return copied;
-	}
 };
 
 } // namespace libcdoc

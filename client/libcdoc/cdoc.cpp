@@ -18,120 +18,87 @@ Configuration::getBoolean(const std::string& param)
 	return val == "true";
 }
 
-bool
+std::string
+CryptoBackend::getLastErrorStr(int code) const
+{
+	switch (code) {
+	case OK:
+		return "";
+	case NOT_IMPLEMENTED:
+		return "CryptoBackend: Method not implemented";
+	case INVALID_PARAMS:
+		return "CryptoBackend: Invalid parameters";
+	case OPENSSL_ERROR:
+		return "CryptoBackend: OpenSSL error";
+	default:
+		break;
+	}
+	return "Internal error";
+}
+
+int
 CryptoBackend::getKeyMaterial(std::vector<uint8_t>& key_material, const std::vector<uint8_t> pw_salt, int32_t kdf_iter, const std::string& label)
 {
 	if (kdf_iter > 0) {
+		if (pw_salt.empty()) return INVALID_PARAMS;
 		std::vector<uint8_t> secret;
-		if (!getSecret(secret, label)) return false;
+		int result = getSecret(secret, label);
+		if (result < 0) return result;
+#ifdef LOCAL_DEBUG
 		std::cerr << "Secret: " << Crypto::toHex(secret) << std::endl;
+#endif
 		key_material = libcdoc::Crypto::pbkdf2_sha256(secret, pw_salt, kdf_iter);
 		std::fill(secret.begin(), secret.end(), 0);
+		if (key_material.empty()) return OPENSSL_ERROR;
 	} else {
-		if (!getSecret(key_material, label)) return false;
+		int result = getSecret(key_material, label);
+		if (result < 0) return result;
 	}
+#ifdef LOCAL_DEBUG
 	std::cerr << "Key material: " << Crypto::toHex(key_material) << std::endl;
-	return !key_material.empty();
+#endif
+	return OK;
 }
 
-bool
+int
 CryptoBackend::getKEK(std::vector<uint8_t>& kek, const std::vector<uint8_t>& salt, const std::vector<uint8_t> pw_salt, int32_t kdf_iter,
-			const std::string& label, const std::string& info)
+			const std::string& label, const std::string& expand_salt)
 {
+	if (salt.empty() || expand_salt.empty()) return INVALID_PARAMS;
+	if ((kdf_iter > 0) && pw_salt.empty()) return INVALID_PARAMS;
 	std::vector<uint8_t> key_material;
-	if (!getKeyMaterial(key_material, pw_salt, kdf_iter, label)) return false;
+	int result = getKeyMaterial(key_material, pw_salt, kdf_iter, label);
+	if (result) return result;
 	std::vector<uint8_t> tmp = libcdoc::Crypto::extract(key_material, salt, 32);
 	std::fill(key_material.begin(), key_material.end(), 0);
+	if (tmp.empty()) return OPENSSL_ERROR;
+#ifdef LOCAL_DEBUG
 	std::cerr << "Extract: " << Crypto::toHex(tmp) << std::endl;
-	kek = libcdoc::Crypto::expand(tmp, std::vector<uint8_t>(info.cbegin(), info.cend()), 32);
+#endif
+	kek = libcdoc::Crypto::expand(tmp, std::vector<uint8_t>(expand_salt.cbegin(), expand_salt.cend()), 32);
+	if (kek.empty()) return OPENSSL_ERROR;
+#ifdef LOCAL_DEBUG
 	std::cerr << "KEK: " << Crypto::toHex(kek) << std::endl;
-	return !kek.empty();
+#endif
+	return OK;
 }
 
-struct TempListConsumer : public libcdoc::MultiDataConsumer {
-	static constexpr int64_t MAX_VEC_SIZE = 500L * 1024L * 1024L;
-
-	size_t _max_memory_size;
-	std::vector<libcdoc::IOEntry> files;
-	explicit TempListConsumer(size_t max_memory_size = 500L * 1024L * 1024L) : _max_memory_size(max_memory_size) {}
-	~TempListConsumer();
-	size_t write(const uint8_t *src, size_t size) override final;
-	bool close() override final;
-	bool isError() override final;
-	bool open(const std::string& name, int64_t size) override final;
-private:
-	std::ostream *ofs = nullptr;
-
-	std::stringstream *sstream = nullptr;
-	std::ofstream *fstream = nullptr;
-	std::string tmp_name;
-};
-
-TempListConsumer::~TempListConsumer()
+std::string
+NetworkBackend::getLastErrorStr(int code) const
 {
-	if (ofs) delete ofs;
-}
-
-size_t
-TempListConsumer::write(const uint8_t *src, size_t size)
-{
-	if (!ofs) return 0;
-	libcdoc::IOEntry& file = files.back();
-	ofs->write((const char *) src, size);
-	file.size += size;
-	return size;
-}
-
-bool
-TempListConsumer::close()
-{
-	libcdoc::IOEntry& file = files.back();
-	if (fstream) {
-		fstream->close();
-		file.stream = std::make_shared<std::ifstream>(tmp_name);
-		fstream = nullptr;
-		ofs = nullptr;
-		return true;
-	} else if (sstream) {
-		file.stream = std::shared_ptr<std::istream>(sstream);
-		file.stream->seekg(0);
-		sstream = nullptr;
-		ofs = nullptr;
-		return true;
-	} else {
-		return false;
+	switch (code) {
+	case OK:
+		return "";
+	case NOT_IMPLEMENTED:
+		return "NetworkBackend: Method not implemented";
+	case INVALID_PARAMS:
+		return "NetworkBackend: Invalid parameters";
+	case NETWORK_ERROR:
+		return "NetworkBackend: Network error";
+	default:
+		break;
 	}
-}
-
-bool
-TempListConsumer::isError()
-{
-	return sstream && sstream->bad();
-}
-
-bool
-TempListConsumer::open(const std::string& name, int64_t size)
-{
-	if (ofs) return false;
-	files.push_back({name, {}, "application/octet-stream", 0, nullptr});
-	if ((size < 0) || (size > MAX_VEC_SIZE)) {
-		char name[L_tmpnam];
-		// fixme:
-		std::tmpnam(name);
-		fstream = new std::ofstream(name);
-		ofs = fstream;
-	} else {
-		sstream = new std::stringstream(std::ios_base::out | std::ios_base::in);
-		ofs = sstream;
-	}
-	return true;
-}
-
-std::vector<IOEntry> CDocReader::decryptPayload(const std::vector<uint8_t> &fmk)
-{
-	TempListConsumer cons;
-	if (!decryptPayload(fmk, &cons)) return {};
-	return std::move(cons.files);
+	return "Internal error";
 }
 
 int

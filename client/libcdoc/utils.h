@@ -1,8 +1,11 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#include <algorithm>
 #include <iostream>
 #include <vector>
+
+#include <libcdoc/io.h>
 
 namespace libcdoc {
 
@@ -63,5 +66,53 @@ private:
 };
 
 } // vectorwrapbuf
+
+// A source implementation that always keeps last 16 bytes in tag
+
+struct TaggedSource : public libcdoc::DataSource {
+	std::vector<uint8_t> tag;
+	libcdoc::DataSource *_src;
+	bool _owned;
+
+	TaggedSource(libcdoc::DataSource *src, bool take_ownership, size_t tag_size) : tag(tag_size), _src(src), _owned(take_ownership) {
+		tag.resize(tag.size());
+		_src->read(tag.data(), tag.size());
+	}
+	~TaggedSource() {
+		if (_owned) delete(_src);
+	}
+
+	bool seek(size_t pos) override final {
+		if (_src->seek(pos)) {
+			_src->read(tag.data(), tag.size());
+			return true;
+		}
+		return false;
+	}
+
+	int64_t read(uint8_t *dst, size_t size) override final {
+		uint8_t tmp[tag.size()];
+		size_t nread = _src->read(dst, size);
+		if (nread >= tag.size()) {
+			std::copy(dst + nread - tag.size(), dst + nread, tmp);
+			std::copy_backward(dst, dst + nread - tag.size(), dst + nread);
+			std::copy(tag.cbegin(), tag.cend(), dst);
+			std::copy(tmp, tmp + tag.size(), tag.begin());
+		} else {
+			std::copy(dst, dst + nread, tmp);
+			std::copy(tag.cbegin(), tag.cbegin() + nread, dst);
+			std::copy(tag.cbegin() + nread, tag.cend(), tag.begin());
+			std::copy(tmp, tmp + nread, tag.end() - nread);
+		}
+		return nread;
+	}
+
+	virtual bool isError() override final {
+		return _src->isError();
+	}
+	virtual bool isEof() override final {
+		return _src->isEof();
+	}
+};
 
 #endif // UTILS_H

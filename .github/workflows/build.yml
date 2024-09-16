@@ -5,7 +5,7 @@ permissions:
 env:
   BUILD_NUMBER: ${{ github.run_number }}
   CMAKE_BUILD_PARALLEL_LEVEL: 4
-  UBUNTU_DEPS: ./libdigidocpp-pkg/*.deb cmake libldap2-dev gettext libpcsclite-dev libssl-dev libgl-dev libqt6svg6-dev qt6-tools-dev qt6-tools-dev-tools qt6-l10n-tools libflatbuffers-dev zlib1g-dev
+  UBUNTU_DEPS: ./libdigidocpp-pkg/*.deb cmake libldap2-dev gettext libpcsclite-dev libssl-dev libgl-dev libqt6svg6-dev qt6-tools-dev qt6-tools-dev-tools qt6-l10n-tools libflatbuffers-dev libxml2-dev zlib1g-dev
 jobs:
   macos:
     name: Build on macOS
@@ -72,7 +72,7 @@ jobs:
         repo: open-eid/libdigidocpp
     - name: Install dependencies
       if: matrix.container == '20.04'
-      run: apt update -qq && apt install --no-install-recommends -y git lsb-release build-essential devscripts debhelper pkg-config lintian ./libdigidocpp-pkg/*.deb cmake libldap2-dev gettext libpcsclite-dev libssl-dev libqt5svg5-dev qttools5-dev-tools qttools5-dev libflatbuffers-dev zlib1g-dev
+      run: apt update -qq && apt install --no-install-recommends -y git lsb-release build-essential devscripts debhelper pkg-config lintian ./libdigidocpp-pkg/*.deb cmake libldap2-dev gettext libpcsclite-dev libssl-dev libqt5svg5-dev qttools5-dev-tools qttools5-dev libflatbuffers-dev libxml2-dev zlib1g-dev
     - name: Install dependencies
       if: matrix.container != '20.04'
       run: apt update -qq && apt install --no-install-recommends -y git lsb-release build-essential devscripts debhelper pkg-config lintian ${UBUNTU_DEPS}

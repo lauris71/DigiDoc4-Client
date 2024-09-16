@@ -28,7 +28,7 @@ struct FileListConsumer : public libcdoc::MultiDataConsumer {
 		file.data.assign(src, src + size);
 		return size;
 	}
-	bool close() override final {}
+	bool close() override final { return true; }
 	bool isError() override final { return false; }
 	bool open(const std::string& name, int64_t size) override final {
 		files.push_back({name, "application/octet-stream", {}});

@@ -2,6 +2,7 @@
 #define TAR_H
 
 #include <array>
+#include <cstring>
 #include <vector>
 #include <string>
 
@@ -65,7 +66,7 @@ private:
 
 		bool isNull() {
 			Header empty = {};
-			return memcmp(this, &empty, sizeof(Header)) == 0;
+			return std::memcmp(this, &empty, sizeof(Header)) == 0;
 		}
 
 		bool verify() {

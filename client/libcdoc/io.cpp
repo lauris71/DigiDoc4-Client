@@ -44,9 +44,11 @@ DataConsumer::writeAll(DataSource& src)
 	static const size_t BUF_SIZE = 64 * 1024;
 	uint8_t buf[BUF_SIZE];
 	size_t total_read = 0;
-	while (!isError() && !src.isError() && !src.isEof()) {
-		size_t n_read = src.read(buf, BUF_SIZE);
-		write(buf, n_read);
+	while (!src.isEof()) {
+		int64_t n_read = src.read(buf, BUF_SIZE);
+		if (n_read < 0) return n_read;
+		n_read = write(buf, n_read);
+		if (n_read < 0) return n_read;
 		total_read += n_read;
 	}
 	return total_read;
@@ -60,8 +62,8 @@ DataSource::skip(size_t size) {
 	while (total_read < size) {
 		size_t to_read = std::min<size_t>(size - total_read, BLOCK_SIZE);
 		size_t n_read = read(b, to_read);
+		if (n_read < 0) return n_read;
 		total_read += n_read;
-		if (n_read != to_read) break;
 	}
 	return total_read;
 }
@@ -69,6 +71,60 @@ DataSource::skip(size_t size) {
 IStreamSource::IStreamSource(const std::string& path)
 	: IStreamSource(new std::ifstream(path), true)
 {
+}
+
+OStreamConsumer::OStreamConsumer(const std::string& path)
+	: OStreamConsumer(new std::ofstream(path), true)
+{
+}
+
+FileListSource::FileListSource(const std::string& base, const std::vector<std::string>& files) : _base(base), _files(files), _current(-1)
+{
+}
+
+int64_t
+FileListSource::read(uint8_t *dst, size_t size)
+{
+	if ((_current < 0) || (_current >= _files.size())) return 0;
+	_ifs.read((char *) dst, size);
+	return _ifs.gcount();
+}
+
+bool
+FileListSource::isError()
+{
+	if ((_current < 0) || (_current >= _files.size())) return 0;
+	return _ifs.bad();
+}
+
+bool
+FileListSource::isEof()
+{
+	if (_current < 0) return false;
+	if (_current >= _files.size()) return true;
+	return _ifs.eof();
+}
+
+size_t
+FileListSource::getNumComponents()
+{
+	return _files.size();
+}
+
+bool
+FileListSource::next(FileListSource::File& file)
+{
+	_ifs.close();
+	++_current;
+	if (_current >= _files.size()) return false;
+	std::filesystem::path path(_base);
+	path.append(_files[_current]);
+	if (!std::filesystem::exists(path)) return false;
+	_ifs.open(path, std::ios_base::in);
+	if (!_ifs) return false;
+	file.name = _files[_current];
+	file.size = std::filesystem::file_size(path);
+	return true;
 }
 
 StreamListSource::StreamListSource(const std::vector<IOEntry>& files) : _files(files), _current(-1)

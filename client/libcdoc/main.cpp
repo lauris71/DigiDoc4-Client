@@ -87,7 +87,9 @@ print_usage(std::ostream& ofs, int exit_value)
 {
 	ofs
 		//<< "cdoc-tool encrypt -r X509DerRecipientCert [-r X509DerRecipientCert [...]] InFile [InFile [...]] OutFile" << std::endl
-		<< "cdoc-tool encrypt [--rcpt-cert LABEL X509DERFILE] [--rcpt-key LABEL SECRED [--rcpt-pwd LABEL PASSWORD] [...] [--file INFILE] [...] --out OUTFILE" << std::endl
+		<< "cdoc-tool encrypt --rcpt RECIPIENT [--rcpt RECIPIENT] [--file INFILE] [...] --out OUTFILE" << std::endl
+		<< "  where RECIPIENT is in form label:TYPE:value" << std::endl
+		<< "    where TYPE is 'cert', 'key' or 'pw'" << std::endl
 #ifdef _WIN32
 		<< "cdoc-tool decrypt win [ui|noui] pin InFile OutFolder" << std::endl
 #endif
@@ -102,11 +104,20 @@ fromHex(const std::string& hex) {
 	char c[3] = {0};
 	for (size_t i = 0; i < (hex.size() & 0xfffffffe); i += 2) {
 		std::copy(hex.cbegin() + i, hex.cbegin() + i + 2, c);
-		std::cerr << c << std::endl;
 		val[i / 2] = (uint8_t) strtol(c, NULL, 16);
 	}
-	std::cerr << libcdoc::Crypto::toHex(val) << std::endl;
 	return std::move(val);
+}
+
+static std::vector<std::string>
+split (const std::string &s, char delim = ':') {
+	std::vector<std::string> result;
+	std::stringstream ss(s);
+	std::string item;
+	while (getline (ss, item, delim)) {
+		result.push_back (item);
+	}
+	return result;
 }
 
 static std::vector<uint8_t>
@@ -141,15 +152,19 @@ encrypt(int argc, char *argv[])
 	std::vector<std::string> files;
 	std::string out;
 	for (int i = 0; i < argc; i++) {
-		if (!strcmp(argv[i], "--rcpt-cert") && ((i + 2) <= argc)) {
-			rcpts.push_back({Recipient::CERT, argv[i + 1], readFile(toUTF8(argv[i + 2]))});
-			i += 2;
-		} else if (!strcmp(argv[i], "--rcpt-pwd") && ((i + 2) <= argc)) {
-			rcpts.push_back({Recipient::PASSWORD, argv[i + 1], fromStr(argv[i + 2])});
-			i += 2;
-		} else if (!strcmp(argv[i], "--rcpt-key") && ((i + 2) <= argc)) {
-			rcpts.push_back({Recipient::KEY, argv[i + 1], fromHex(argv[i + 2])});
-			i += 2;
+		if (!strcmp(argv[i], "--rcpt") && ((i + 1) <= argc)) {
+			std::vector<std::string> parts = split(argv[i + 1]);
+			if (parts.size() != 3) print_usage(std::cerr, 1);
+			if (parts[1] == "cert") {
+				rcpts.push_back({Recipient::CERT, parts[0], readFile(toUTF8(parts[2]))});
+			} else if (parts[1] == "key") {
+				rcpts.push_back({Recipient::KEY, parts[0], fromHex(parts[2])});
+			} else if (parts[1] == "pw") {
+				rcpts.push_back({Recipient::PASSWORD, parts[0], std::vector<uint8_t>(parts[2].cbegin(), parts[2].cend())});
+			} else {
+				print_usage(std::cerr, 1);
+			}
+			i += 1;
 		} else if (!strcmp(argv[i], "--file") && ((i + 1) <= argc)) {
 			files.push_back(argv[i + 1]);
 			i += 1;
@@ -179,20 +194,13 @@ encrypt(int argc, char *argv[])
 		}
 		keys.push_back(std::shared_ptr<libcdoc::CKey>(key));
 	}
-	std::vector<libcdoc::IOEntry> entries;
-	for (const std::string& file : files) {
-		std::ifstream *ifs = new std::ifstream(file);
-		ifs->seekg(0, std::ios_base::seekdir::end);
-		size_t size = ifs->tellg();
-		ifs->seekg(0);
-		entries.push_back({file, "id", "application/octet-stream", (int64_t) size, nullptr});
-		entries.back().stream = std::shared_ptr<std::istream>(ifs);
-	}
 	ToolConf conf;
 	ToolCrypto crypto(secrets);
 	libcdoc::CDocWriter *writer = libcdoc::CDocWriter::createWriter(2, out, &conf, &crypto, nullptr);
 
-	writer->encrypt(out, entries, keys);
+	std::ofstream ofs(out);
+	libcdoc::FileListSource src({}, files);
+	writer->encrypt(ofs, src, keys);
 
 	return 0;
 }

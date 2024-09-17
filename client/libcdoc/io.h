@@ -1,7 +1,8 @@
 #ifndef IO_H
 #define IO_H
 
-#include <istream>
+#include <filesystem>
+#include <fstream>
 #include <vector>
 
 namespace libcdoc {
@@ -129,6 +130,7 @@ struct OStreamConsumer : public DataConsumer {
 	bool _owned;
 
 	OStreamConsumer(std::ostream *ofs, bool take_ownership = false) : _ofs(ofs), _owned(take_ownership) {}
+	OStreamConsumer(const std::string& path);
 	~OStreamConsumer() {
 		if (_owned) delete _ofs;
 	}
@@ -178,6 +180,44 @@ struct VectorConsumer : public DataConsumer {
 	}
 	bool close() override final { return true; }
 	virtual bool isError() override final { return false; }
+};
+
+struct FileListConsumer : public MultiDataConsumer {
+	std::filesystem::path base;
+	std::ofstream ofs;
+	FileListConsumer(const std::string base_path) {
+		base = base_path;
+	}
+	int64_t write(const uint8_t *src, size_t size) override final {
+		ofs.write((const char *) src, size);
+		return (ofs) ? size : OUTPUT_STREAM_ERROR;
+	}
+	bool close() override final {
+		ofs.close();
+		return true;
+	}
+	bool isError() override final {
+		return !ofs;
+	}
+	bool open(const std::string& name, int64_t size) override final {
+		std::filesystem::path path = base.append(name);
+		ofs.open(path.string(), std::ios_base::out);
+		return bool(ofs);
+	}
+};
+
+struct FileListSource : public MultiDataSource {
+	FileListSource(const std::string& base, const std::vector<std::string>& files);
+	int64_t read(uint8_t *dst, size_t size) override final;
+	bool isError() override final;
+	bool isEof() override final;
+	size_t getNumComponents() override final;
+	bool next(File& file) override final;
+
+	std::filesystem::path _base;
+	const std::vector<std::string>& _files;
+	int64_t _current;
+	std::ifstream _ifs;
 };
 
 struct IOEntry

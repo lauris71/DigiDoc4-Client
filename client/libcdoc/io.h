@@ -17,7 +17,7 @@ struct DataConsumer {
 
 	virtual ~DataConsumer() = default;
 	virtual int64_t write(const uint8_t *src, size_t size) = 0;
-	virtual bool close() = 0;
+	virtual int close() = 0;
 	virtual bool isError() = 0;
 	virtual std::string getLastErrorStr(int code) const;
 
@@ -55,12 +55,8 @@ struct MultiDataConsumer : public DataConsumer {
 };
 
 struct MultiDataSource : public DataSource {
-	struct File {
-		std::string name;
-		int64_t size;
-	};
 	virtual size_t getNumComponents() = 0;
-	virtual bool next(File& file) = 0;
+	virtual bool next(std::string& name, int64_t& size) = 0;
 };
 
 struct ChainedConsumer : public DataConsumer {
@@ -73,9 +69,9 @@ struct ChainedConsumer : public DataConsumer {
 	int64_t write(const uint8_t *src, size_t size) {
 		return _dst->write(src, size);
 	}
-	bool close() {
+	int close() {
 		if (_owned) return _dst->close();
-		return true;
+		return OK;
 	}
 	bool isError() {
 		return _dst->isError();
@@ -140,9 +136,9 @@ struct OStreamConsumer : public DataConsumer {
 		return (_ofs) ? size : OUTPUT_STREAM_ERROR;
 	}
 
-	bool close() {
+	int close() {
 		_ofs->flush();
-		return _ofs;
+		return (_ofs) ? OK : OUTPUT_STREAM_ERROR;
 	}
 
 	bool isError() { return !_ofs; }
@@ -178,7 +174,7 @@ struct VectorConsumer : public DataConsumer {
 		_data.insert(_data.end(), src, src + size);
 		return size;
 	}
-	bool close() override final { return true; }
+	int close() override final { return OK; }
 	virtual bool isError() override final { return false; }
 };
 
@@ -192,9 +188,9 @@ struct FileListConsumer : public MultiDataConsumer {
 		ofs.write((const char *) src, size);
 		return (ofs) ? size : OUTPUT_STREAM_ERROR;
 	}
-	bool close() override final {
+	int close() override final {
 		ofs.close();
-		return true;
+		return (ofs) ? OK : OUTPUT_STREAM_ERROR;
 	}
 	bool isError() override final {
 		return !ofs;
@@ -212,31 +208,12 @@ struct FileListSource : public MultiDataSource {
 	bool isError() override final;
 	bool isEof() override final;
 	size_t getNumComponents() override final;
-	bool next(File& file) override final;
+	bool next(std::string& name, int64_t& size) override final;
 
 	std::filesystem::path _base;
 	const std::vector<std::string>& _files;
 	int64_t _current;
 	std::ifstream _ifs;
-};
-
-struct IOEntry
-{
-	std::string name, id, mime;
-	int64_t size;
-	std::shared_ptr<std::istream> stream;
-};
-
-struct StreamListSource : public MultiDataSource {
-	StreamListSource(const std::vector<IOEntry>& files);
-	int64_t read(uint8_t *dst, size_t size) override final;
-	bool isError() override final;
-	bool isEof() override final;
-	size_t getNumComponents() override final;
-	bool next(File& file) override final;
-
-	const std::vector<IOEntry>& _files;
-	int64_t _current;
 };
 
 } // namespace libcdoc

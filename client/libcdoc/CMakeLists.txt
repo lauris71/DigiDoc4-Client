@@ -49,7 +49,7 @@ add_library(cdoc_private STATIC
 )
 set_property(TARGET cdoc_private PROPERTY POSITION_INDEPENDENT_CODE ON)
 
-target_include_directories(cdoc_private PRIVATE ..)
+target_include_directories(cdoc_private PRIVATE ${OPENSSL_INCLUDE_DIR} ..)
 
 #add_library(cdoc SHARED
 #	CDOCReader.cpp
@@ -103,7 +103,7 @@ install(TARGETS cdoc
 	PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/cdoc
 	FRAMEWORK DESTINATION ${INSTALL_FRAMEWORKDIR}
 )
-target_include_directories(cdoc PRIVATE ..)
+target_include_directories(cdoc PRIVATE ${OPENSSL_INCLUDE_DIR} ..)
 
 foreach(SCHEMA ${SCHEMAS})
         get_filename_component(stem ${SCHEMA} NAME_WE)

@@ -119,7 +119,7 @@ struct ZConsumer : public ChainedConsumer {
 		return _fail || ChainedConsumer::isError();
 	};
 
-	bool close() override final {
+	int close() override final {
 		flush = Z_FINISH;
 		write (nullptr, 0);
 		deflateEnd(&_s);

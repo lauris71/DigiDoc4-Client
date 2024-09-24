@@ -107,9 +107,9 @@ const QHash<QString, QCryptographicHash::Algorithm> SHA_MTH{
 	{SHA256_MTH, QCryptographicHash::Sha256}, {SHA384_MTH, QCryptographicHash::Sha384}, {SHA512_MTH, QCryptographicHash::Sha512}
 };
 
-std::vector<uint8_t>
-DDCryptoBackend::deriveConcatKDF(const std::vector<uint8_t> &publicKey, const std::string &digest, int keySize,
-	const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo) const
+int
+DDCryptoBackend::deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::string &digest, int keySize,
+	const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo)
 {
 	QByteArray decryptedKey = qApp->signer()->decrypt([&publicKey, &digest, &keySize, &algorithmID, &partyUInfo, &partyVInfo](QCryptoBackend *backend) {
 			QByteArray ba(reinterpret_cast<const char *>(publicKey.data()), publicKey.size());
@@ -119,7 +119,8 @@ DDCryptoBackend::deriveConcatKDF(const std::vector<uint8_t> &publicKey, const st
 				QByteArray(reinterpret_cast<const char *>(partyUInfo.data()), partyUInfo.size()),
 				QByteArray(reinterpret_cast<const char *>(partyVInfo.data()), partyVInfo.size()));
 	});
-	return std::vector<uint8_t>(decryptedKey.cbegin(), decryptedKey.cend());
+	dst.assign(decryptedKey.cbegin(), decryptedKey.cend());
+	return (dst.empty()) ? OPENSSL_ERROR : OK;
 }
 
 std::vector<uint8_t>
@@ -176,10 +177,10 @@ public:
 	DDCryptoBackend crypto;
 	DDNetworkBackend network;
 
-	std::vector<libcdoc::IOEntry> files;
+	std::vector<IOEntry> files;
 	std::vector<std::shared_ptr<libcdoc::CKey>> keys;
 
-	const std::vector<libcdoc::IOEntry> &getFiles() {
+	const std::vector<IOEntry> &getFiles() {
 		return files;
 	}
 	std::unique_ptr<libcdoc::CDocWriter> createCDocWriter() {
@@ -227,22 +228,22 @@ void CryptoDoc::Private::run()
 		}
 	} else if (writer) {
 		qCDebug(CRYPTO) << "Encrypt" << fileName;
-		if (crypto.secret.empty()) {
-			if (writer->encrypt(fileName.toStdString(), files, keys)) {
-				// Encryption successful, open new reader
-				writer.reset();
-				reader = createCDocReader(fileName.toStdString());
-			}
-		} else {
+		std::ofstream ofs(fileName.toStdString(), std::ios_base::binary);
+		if (ofs.bad()) return;
+		StreamListSource slsrc(files);
+		if (!crypto.secret.empty()) {
 			auto key = std::make_shared<libcdoc::EncKeySymmetric>(libcdoc::Crypto::random(), libcdoc::Crypto::random(), kdf_iter);
 			key->label = label.toStdString();
 			keys.push_back(key);
-			if (writer->encrypt(fileName.toStdString(), files, keys)) {
-				// Encryption successful, open new reader
-				reader = createCDocReader(fileName.toStdString());
-				if (!reader) return;
-				writer.reset();
-			}
+		}
+		if (writer->encrypt(ofs, slsrc, keys)) {
+			ofs.close();
+			// Encryption successful, open new reader
+			reader = createCDocReader(fileName.toStdString());
+			if (!reader) return;
+			writer.reset();
+		} else {
+			std::filesystem::remove(std::filesystem::path(fileName.toStdString()));
 		}
 	} else {
 		qWarning() << "Neither reader nor writer is initialized";
@@ -287,7 +288,6 @@ bool CDocumentModel::addFile(const QString &file, const QString &mime)
 	std::string id = QStringLiteral("D%1").arg(d->files.size()).toStdString();
 	d->files.push_back({
 								 name,
-								 id,
 								 mime.toStdString(),
 								 size,
 								 data,
@@ -307,10 +307,10 @@ QString CDocumentModel::copy(int row, const QString &dst) const
 		if (d->reader || d->writer) {
 			return d->files;
 		} else {
-			return std::vector<libcdoc::IOEntry>();
+			return std::vector<IOEntry>();
 		}
 	};
-	const libcdoc::IOEntry &file = d->getFiles().at(row);
+	const IOEntry &file = d->getFiles().at(row);
 	if( QFile::exists(dst)) QFile::remove(dst);
 	file.stream->seekg(0);
 	if(QFile f(dst); f.open(QFile::WriteOnly) && copyIODevice(file.stream.get(), &f) == file.size)
@@ -482,7 +482,8 @@ CryptoDoc::decrypt(std::shared_ptr<libcdoc::CKey> key, const QByteArray& secret)
 	}
 
 	d->crypto.secret.assign(secret.cbegin(), secret.cend());
-	std::vector<uint8_t> fmk = d->reader->getFMK(*key);
+	std::vector<uint8_t> fmk;
+	d->reader->getFMK(fmk, *key);
 	d->fmk = QByteArray(reinterpret_cast<const char *>(fmk.data()), fmk.size());
 #ifndef NDEBUG
 	qDebug() << "FMK (Transport key)" << d->fmk.toHex();

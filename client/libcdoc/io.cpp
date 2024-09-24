@@ -112,7 +112,7 @@ FileListSource::getNumComponents()
 }
 
 bool
-FileListSource::next(FileListSource::File& file)
+FileListSource::next(std::string& name, int64_t& size)
 {
 	_ifs.close();
 	++_current;
@@ -122,51 +122,8 @@ FileListSource::next(FileListSource::File& file)
 	if (!std::filesystem::exists(path)) return false;
 	_ifs.open(path, std::ios_base::in);
 	if (!_ifs) return false;
-	file.name = _files[_current];
-	file.size = std::filesystem::file_size(path);
-	return true;
-}
-
-StreamListSource::StreamListSource(const std::vector<IOEntry>& files) : _files(files), _current(-1)
-{
-}
-
-int64_t
-StreamListSource::read(uint8_t *dst, size_t size)
-{
-	if ((_current < 0) || (_current >= _files.size())) return 0;
-	_files[_current].stream->read((char *) dst, size);
-	return _files[_current].stream->gcount();
-}
-
-bool
-StreamListSource::isError()
-{
-	if ((_current < 0) || (_current >= _files.size())) return 0;
-	return _files[_current].stream->bad();
-}
-
-bool
-StreamListSource::isEof()
-{
-	if (_current < 0) return false;
-	if (_current >= _files.size()) return true;
-	return _files[_current].stream->eof();
-}
-
-size_t
-StreamListSource::getNumComponents()
-{
-	return _files.size();
-}
-
-bool
-StreamListSource::next(StreamListSource::File& file)
-{
-	++_current;
-	if (_current >= _files.size()) return false;
-	file.name = _files[_current].name;
-	file.size = _files[_current].size;
+	name = _files[_current];
+	size = std::filesystem::file_size(path);
 	return true;
 }
 

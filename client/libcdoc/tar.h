@@ -8,7 +8,6 @@
 
 #include <sstream>
 #include <cstdio>
-#include <fstream>
 
 #include <libcdoc/zstream.h>
 #include <libcdoc/cdoc.h>

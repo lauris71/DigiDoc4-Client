@@ -162,6 +162,11 @@ bool CDOC1Writer::Private::writeRecipient(XMLWriter *xmlw, const std::vector<uch
 	return true;
 }
 
+struct FileEntry {
+	std::string name;
+	int64_t size;
+};
+
 /**
  * Encrypt data
  */
@@ -185,29 +190,34 @@ bool CDOC1Writer::encrypt(std::ostream& ofs, libcdoc::MultiDataSource& src, cons
 	}
 	xmlw->writeEndElement(Private::DS); // KeyInfo
 
-	std::vector<libcdoc::MultiDataSource::File> files;
+	std::vector<FileEntry> files;
 	xmlw->writeElement(Private::DENC, "CipherData", [&]{
 		if(src.getNumComponents() > 1) {
 			std::vector<uint8_t> data(4096);
 			DDOCWriter ddoc(data);
-			libcdoc::MultiDataSource::File file;
-			while (src.next(file)) {
-				files.push_back(file);
-				std::vector<uint8_t> data;
-				libcdoc::VectorConsumer vcons(data);
+			std::string name;
+			int64_t size;
+			while (src.next(name, size)) {
+				files.push_back({name, size});
+				std::vector<uint8_t> contents;
+				libcdoc::VectorConsumer vcons(contents);
 				src.readAll(vcons);
-				ddoc.addFile(file.name, "application/octet-stream", data);
+				ddoc.addFile(name, "application/octet-stream", contents);
 			}
 			ddoc.close();
 			libcdoc::vectorwrapbuf databuf(data);
 			std::istream in(&databuf);
 			xmlw->writeBase64Element(Private::DENC, "CipherValue", libcdoc::Crypto::encrypt(d->method, transportKey, in));
 		} else if (src.getNumComponents() == 1) {
-			libcdoc::MultiDataSource::File file;
-			src.next(file);
+			std::string name;
+			int64_t size;
+			src.next(name, size);
+			files.push_back({name, size});
+
 			std::vector<uint8_t> data;
 			libcdoc::VectorConsumer vcons(data);
 			src.readAll(vcons);
+
 			libcdoc::vectorwrapbuf databuf(data);
 			std::istream in(&databuf);
 			xmlw->writeBase64Element(Private::DENC, "CipherValue", libcdoc::Crypto::encrypt(d->method, transportKey, in));
@@ -217,7 +227,7 @@ bool CDOC1Writer::encrypt(std::ostream& ofs, libcdoc::MultiDataSource& src, cons
 		xmlw->writeTextElement(Private::DENC, "EncryptionProperty", {{"Name", "LibraryVersion"}}, "cdoc|0.0.1");
 		xmlw->writeTextElement(Private::DENC, "EncryptionProperty", {{"Name", "DocumentFormat"}}, d->documentFormat);
 		xmlw->writeTextElement(Private::DENC, "EncryptionProperty", {{"Name", "Filename"}}, files.size() == 1 ? files.at(0).name : "tmp.ddoc");
-		for(const libcdoc::MultiDataSource::File &file: files)
+		for(const FileEntry &file: files)
 		{
 			xmlw->writeTextElement(Private::DENC, "EncryptionProperty", {{"Name", "orig_file"}},
 				file.name + "|" + std::to_string(file.size) + "|" + "application/octet-stream" + "|D0");

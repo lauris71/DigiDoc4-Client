@@ -37,6 +37,17 @@ CryptoBackend::getLastErrorStr(int code) const
 }
 
 int
+CryptoBackend::deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::string &digest, int keySize,
+	const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo)
+{
+	std::vector<uint8_t> shared_secret;
+	int result = derive(shared_secret, publicKey);
+	if (result != OK) return result;
+	dst = libcdoc::Crypto::concatKDF(digest, keySize, shared_secret, algorithmID, partyUInfo, partyVInfo);
+	return (dst.empty()) ? OPENSSL_ERROR : OK;
+}
+
+int
 CryptoBackend::getKeyMaterial(std::vector<uint8_t>& key_material, const std::vector<uint8_t> pw_salt, int32_t kdf_iter, const std::string& label)
 {
 	if (kdf_iter > 0) {
@@ -132,20 +143,6 @@ CDocReader::createReader(const std::string& path, Configuration *conf, CryptoBac
 	reader->crypto = crypto;
 	reader->network = network;
 	return reader;
-}
-
-bool
-CDocWriter::encrypt(const std::string& filename, const std::vector<IOEntry>& files, const std::vector<std::shared_ptr<libcdoc::EncKey>>& keys)
-{
-	std::ofstream ofs(filename, std::ios_base::binary);
-	if (ofs.bad()) return false;
-	StreamListSource slsrc(files);
-	bool result = encrypt(ofs, slsrc, keys);
-	ofs.close();
-	if (!result) {
-		std::filesystem::remove(std::filesystem::path(filename));
-	}
-	return result;
 }
 
 CDocWriter *

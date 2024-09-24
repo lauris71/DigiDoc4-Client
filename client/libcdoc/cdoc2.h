@@ -13,7 +13,7 @@ public:
 	const std::vector<std::shared_ptr<libcdoc::CKey>>& getKeys() override final { return keys; }
 	libcdoc::CKey::DecryptionStatus canDecrypt(const libcdoc::Certificate &cert) final;
 	std::shared_ptr<libcdoc::CKey> getDecryptionKey(const libcdoc::Certificate &cert) final;
-	std::vector<uint8_t> getFMK(const libcdoc::CKey &key) override final;
+	bool getFMK(std::vector<uint8_t>& fmk, const libcdoc::CKey &key) override final;
 	bool decryptPayload(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer *consumer) override final;
 
 	CDoc2Reader(libcdoc::DataSource *src, bool take_ownership = false);

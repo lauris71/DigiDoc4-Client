@@ -47,8 +47,8 @@ CDoc2Reader::getDecryptionKey(const libcdoc::Certificate &cert)
 	return best;
 }
 
-std::vector<uint8_t>
-CDoc2Reader::getFMK(const libcdoc::CKey &key)
+bool
+CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::CKey &key)
 {
 	setLastError({});
 	std::vector<uint8_t> kek;
@@ -78,7 +78,7 @@ CDoc2Reader::getFMK(const libcdoc::CKey &key)
 			int result = crypto->decryptRSA(kek, key_material, true);
 			if (result < 0) {
 				setLastError(crypto->getLastErrorStr(result));
-				return {};
+				return false;
 			}
 		} else {
 			std::vector<uint8_t> kekpm = crypto->deriveHMACExtract(key_material, std::vector<uint8_t>(KEKPREMASTER.cbegin(), KEKPREMASTER.cend()), KEY_LEN);
@@ -86,10 +86,10 @@ CDoc2Reader::getFMK(const libcdoc::CKey &key)
 			std::cerr << "Key kekPm: " << libcdoc::Crypto::toHex(kekpm) << std::endl;
 #endif
 			std::string info_str = pki.getSaltForExpand(key_material);
-			kek = libcdoc::Crypto::expand(kekpm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), KEY_LEN);
 #ifndef NDEBUG
 			std::cerr << "info" << libcdoc::Crypto::toHex(std::vector<uint8_t>(info_str.cbegin(), info_str.cend())) << std::endl;
 #endif
+			kek = libcdoc::Crypto::expand(kekpm, std::vector<uint8_t>(info_str.cbegin(), info_str.cend()), KEY_LEN);
 		}
 	}
 #ifndef NDEBUG
@@ -98,9 +98,9 @@ CDoc2Reader::getFMK(const libcdoc::CKey &key)
 
 	if(kek.empty()) {
 		setLastError(t_("Failed to derive key"));
-		return {};
+		return false;
 	}
-	std::vector<uint8_t> fmk = libcdoc::Crypto::xor_data(key.encrypted_fmk, kek);
+	fmk = libcdoc::Crypto::xor_data(key.encrypted_fmk, kek);
 	std::vector<uint8_t> hhk = libcdoc::Crypto::expand(fmk, std::vector<uint8_t>(HMAC.cbegin(), HMAC.cend()));
 #ifndef NDEBUG
 	std::cerr << "xor: " << libcdoc::Crypto::toHex(key.encrypted_fmk) << std::endl;
@@ -110,9 +110,9 @@ CDoc2Reader::getFMK(const libcdoc::CKey &key)
 #endif
 	if(libcdoc::Crypto::sign_hmac(hhk, header_data) != headerHMAC) {
 		setLastError(t_("CDoc 2.0 hash mismatch"));
-		return {};
+		return false;
 	}
-	return fmk;
+	return !fmk.empty();
 }
 
 bool

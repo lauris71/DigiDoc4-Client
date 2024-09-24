@@ -47,9 +47,37 @@ struct CryptoBackend {
 
 	virtual std::string getLastErrorStr(int code) const;
 
-	virtual int decryptRSA(std::vector<uint8_t>& result, const std::vector<uint8_t> &data, bool oaep) const = 0;
-	virtual std::vector<uint8_t> deriveConcatKDF(const std::vector<uint8_t> &publicKey, const std::string &digest, int keySize,
-		const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo) const = 0;
+	/**
+	 * @brief Derive shared secret
+	 * @param result the destination container for shared key
+	 * @param public_key ECDH public Key used to derive shared secret
+	 * @return error code or OK
+	 */
+	virtual int derive(std::vector<uint8_t>& dst, const std::vector<uint8_t> &public_key) { return NOT_IMPLEMENTED; }
+	/**
+	 * @brief decryptRSA
+	 * @param dst the destination container for decrypted data
+	 * @param data encrypted data
+	 * @param oaep
+	 * @return error code or OK
+	 */
+	virtual int decryptRSA(std::vector<uint8_t>& dst, const std::vector<uint8_t> &data, bool oaep) const = 0;
+	/**
+	 * @brief Derive key by ConcatKDF algorithm
+	 * The ConcatKDF key derivation algorithm is defined in Section 5.8.1 of NIST SP 800-56A.
+	 * The default implementation calls derive and performs concatKDF
+	 * @param dst the container for derived key
+	 * @param publicKey ECDH public Key used to derive shared secret
+	 * @param digest Digest method to use for ConcatKDF algorithm
+	 * @param keySize Key size to output
+	 * @param algorithmID OtherInfo info parameters to input
+	 * @param partyUInfo OtherInfo info parameters to input
+	 * @param partyVInfo OtherInfo info parameters to input
+	 * @return error code or OK
+	 */
+	virtual int  deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::string &digest, int keySize,
+		const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo);
+
 	virtual std::vector<uint8_t> deriveHMACExtract(const std::vector<uint8_t> &publicKey, const std::vector<uint8_t> &salt, int keySize) const = 0;
 	// Derive KEK
 	// PBKDF2_SHA256 password pw_salt iter
@@ -60,7 +88,7 @@ struct CryptoBackend {
 	 * @brief Get secret value (either password or symmetric key)
 	 * @param secret the destination container for secret
 	 * @param label label the label of the capsule (key)
-	 * @return true if successful
+	 * @return error code or OK
 	 */
 	virtual int getSecret(std::vector<uint8_t>& secret, const std::string& label) { return NOT_IMPLEMENTED; }
 	/**
@@ -71,7 +99,7 @@ struct CryptoBackend {
 	 * @param pw_salt the salt value for PBKDF
 	 * @param kdf_iter kdf_iter the number of KDF iterations. If kdf_iter is 0, the key is plain symmetric key instead of password.
 	 * @param label the label of the capsule (key)
-	 * @return true if successful
+	 * @return error code or OK
 	 */
 	virtual int getKeyMaterial(std::vector<uint8_t>& key_material, const std::vector<uint8_t> pw_salt, int32_t kdf_iter, const std::string& label);
 	/**
@@ -84,7 +112,7 @@ struct CryptoBackend {
 	 * @param kdf_iter the number of KDF iterations. If kdf_iter is 0, the key is plain symmetric key instead of password.
 	 * @param label the label of the capsule (key)
 	 * @param expand_salt the salt for HKDF expand
-	 * @return true if successful
+	 * @return error code or OK
 	 */
 	virtual int getKEK(std::vector<uint8_t>& kek, const std::vector<uint8_t>& salt, const std::vector<uint8_t> pw_salt, int32_t kdf_iter,
 				const std::string& label, const std::string& expand_salt);
@@ -131,10 +159,11 @@ public:
 	 * @brief Fetches FMK from provided key
 	 * Fetches FMK (File Master Key) from the provided encryption key. Depending on the key type it uses relevant CryptoBackend and/or
 	 * NetworkBackend methods to either fetch secret and derive key or perform external decryption of encrypted KEK.
+	 * @param fmk The FMK of the document
 	 * @param key a key (from document key list)
-	 * @return FMK vector, empty if not successful
+	 * @return true if successful
 	 */
-	virtual std::vector<uint8_t> getFMK(const libcdoc::CKey &key) = 0;
+	virtual bool getFMK(std::vector<uint8_t>& fmk, const libcdoc::CKey &key) = 0;
 	/**
 	 * @brief Decrypt document
 	 * Decrypts the encrypted content and writes files to provided output object
@@ -169,8 +198,6 @@ public:
 	virtual bool encrypt(std::ostream& ofs, MultiDataSource& src, const std::vector<std::shared_ptr<libcdoc::EncKey>>& keys) = 0;
 
 	std::string getLastError() { return last_error; }
-
-	bool encrypt(const std::string& filename, const std::vector<IOEntry>& files, const std::vector<std::shared_ptr<libcdoc::EncKey>>& keys);
 	void setLastError(const std::string& message) { last_error = message; }
 
 	static CDocWriter *createWriter(int version, const std::string& filename, Configuration *conf, CryptoBackend *crypto, NetworkBackend *network);

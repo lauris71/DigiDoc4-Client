@@ -135,8 +135,8 @@ struct ToolCrypto : public libcdoc::CryptoBackend {
 	const std::map<std::string,std::vector<uint8_t>>& _secrets;
 	ToolCrypto(const std::map<std::string,std::vector<uint8_t>>& secrets) : _secrets(secrets) {}
 	int decryptRSA(std::vector<uint8_t>& result, const std::vector<uint8_t> &data, bool oaep) const override final { return {}; }
-	std::vector<uint8_t> deriveConcatKDF(const std::vector<uint8_t> &publicKey, const std::string &digest, int keySize,
-		const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo) const override final { return {}; }
+	int deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::string &digest, int keySize,
+		const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo) override final { return {}; }
 	std::vector<uint8_t> deriveHMACExtract(const std::vector<uint8_t> &publicKey, const std::vector<uint8_t> &salt, int keySize) const override final { return {}; }
 	int getSecret(std::vector<uint8_t>& secret, const std::string& label) override final {
 		secret =_secrets.at(label);

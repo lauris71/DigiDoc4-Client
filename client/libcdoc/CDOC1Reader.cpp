@@ -85,12 +85,12 @@ CDOC1Reader::getDecryptionKey(const libcdoc::Certificate &cert)
 	return {};
 }
 
-std::vector<uint8_t>
-CDOC1Reader::getFMK(const libcdoc::CKey &key)
+bool
+CDOC1Reader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::CKey &key)
 {
 	if (key.type != libcdoc::CKey::Type::CDOC1) {
 		setLastError(t_("Not a CDoc1 key"));
-		return {};
+		return false;
 	}
 	const libcdoc::CKeyCDoc1& ckey = static_cast<const libcdoc::CKeyCDoc1&>(key);
 	setLastError({});
@@ -99,21 +99,26 @@ CDOC1Reader::getFMK(const libcdoc::CKey &key)
 		int result = crypto->decryptRSA(decrypted_key, ckey.encrypted_fmk, false);
 		if (result < 0) {
 			setLastError(crypto->getLastErrorStr(result));
-			return {};
+			return false;
 		}
 	} else {
-		decrypted_key = crypto->deriveConcatKDF(ckey.publicKey, ckey.concatDigest,
+		int result = crypto->deriveConcatKDF(decrypted_key, ckey.publicKey, ckey.concatDigest,
 				libcdoc::Crypto::keySize(ckey.method), ckey.AlgorithmID, ckey.PartyUInfo, ckey.PartyVInfo);
+		if (result < 0) {
+			setLastError(crypto->getLastErrorStr(result));
+			return false;
+		}
 	}
 	if(decrypted_key.empty()) {
 		setLastError(t_("Failed to decrypt/derive key"));
-		return {};
+		return false;
 	}
 	if(ckey.pk_type == libcdoc::CKey::PKType::RSA) {
-		return decrypted_key;
+		fmk = decrypted_key;
 	} else {
-		return libcdoc::Crypto::AESWrap(decrypted_key, ckey.encrypted_fmk, false);
+		fmk = libcdoc::Crypto::AESWrap(decrypted_key, ckey.encrypted_fmk, false);
 	}
+	return !fmk.empty();
 }
 
 bool

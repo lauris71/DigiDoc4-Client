@@ -25,10 +25,10 @@ struct FileListConsumer : public libcdoc::MultiDataConsumer {
 	explicit FileListConsumer() = default;
 	int64_t write(const uint8_t *src, size_t size) override final {
 		DDOCReader::File& file = files.back();
-		file.data.assign(src, src + size);
+		file.data.insert(file.data.end(), src, src + size);
 		return size;
 	}
-	bool close() override final { return true; }
+	int close() override final { return OK; }
 	bool isError() override final { return false; }
 	bool open(const std::string& name, int64_t size) override final {
 		files.push_back({name, "application/octet-stream", {}});

@@ -87,20 +87,21 @@ libcdoc::TAR::save(libcdoc::DataConsumer& dst, libcdoc::MultiDataSource& src)
 			result = std::to_string(len + 1) + record;
 		return result;
 	};
-	libcdoc::MultiDataSource::File file;
-	while (src.next(file)) {
+	std::string name;
+	int64_t size;
+	while (src.next(name, size)) {
 		Header h {};
-		std::string filename(file.name);
+		std::string filename(name);
 		std::string filenameTruncated(filename.begin(), filename.begin() + h.name.size());
 		std::copy(filenameTruncated.cbegin(), filenameTruncated.cend(), h.name.begin());
 
-		if(filename.size() > 100 || file.size > 07777777) {
+		if(filename.size() > 100 || size > 07777777) {
 			h.typeflag = 'x';
 			std::string paxData;
 			if(filename.size() > 100)
 				paxData += toPaxRecord("path", filename);
-			if(file.size > 07777777)
-				paxData += toPaxRecord("size", std::to_string(file.size));
+			if(size > 07777777)
+				paxData += toPaxRecord("size", std::to_string(size));
 			if(!writeHeader(h, paxData.size()) ||
 				dst.write((const uint8_t *) paxData.data(), paxData.size()) != paxData.size() ||
 				!writePadding(paxData.size()))
@@ -108,7 +109,7 @@ libcdoc::TAR::save(libcdoc::DataConsumer& dst, libcdoc::MultiDataSource& src)
 		}
 
 		h.typeflag = '0';
-		if(!writeHeader(h, file.size))
+		if(!writeHeader(h, size))
 			return false;
 		size_t total_written = 0;
 		while (!src.isEof()) {

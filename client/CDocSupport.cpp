@@ -42,11 +42,11 @@
 bool
 checkConnection()
 {
-	if(CheckConnection().check())
+	if(CheckConnection().check()){
 		return true;
+	}
 	return dispatchToMain([] {
-		auto *notification = new FadeInNotification(Application::mainWindow(),
-			ria::qdigidoc4::colors::WHITE, ria::qdigidoc4::colors::MANTIS, 110);
+		auto *notification = new FadeInNotification(Application::mainWindow(), ria::qdigidoc4::colors::WHITE, ria::qdigidoc4::colors::MANTIS, 110);
 		notification->start(QCoreApplication::translate("MainWindow", "Check internet connection"), 750, 3000, 1200);
 		return false;
 	});
@@ -157,31 +157,31 @@ int64_t
 TempListConsumer::write(const uint8_t *src, size_t size)
 {
 	if (!ofs) return OUTPUT_ERROR;
-	libcdoc::IOEntry& file = files.back();
+	IOEntry& file = files.back();
 	ofs->write((const char *) src, size);
 	if (!ofs) return OUTPUT_STREAM_ERROR;
 	file.size += size;
 	return size;
 }
 
-bool
+int
 TempListConsumer::close()
 {
-	libcdoc::IOEntry& file = files.back();
+	IOEntry& file = files.back();
 	if (fstream) {
 		fstream->close();
 		file.stream = std::make_shared<std::ifstream>(tmp_name);
 		fstream = nullptr;
 		ofs = nullptr;
-		return true;
+		return OK;
 	} else if (sstream) {
 		file.stream = std::shared_ptr<std::istream>(sstream);
 		file.stream->seekg(0);
 		sstream = nullptr;
 		ofs = nullptr;
-		return true;
+		return OK;
 	} else {
-		return false;
+		return OUTPUT_STREAM_ERROR;
 	}
 }
 
@@ -195,7 +195,7 @@ bool
 TempListConsumer::open(const std::string& name, int64_t size)
 {
 	if (ofs) return false;
-	files.push_back({name, {}, "application/octet-stream", 0, nullptr});
+	files.push_back({name, "application/octet-stream", 0, nullptr});
 	if ((size < 0) || (size > MAX_VEC_SIZE)) {
 		char name[L_tmpnam];
 		// fixme:
@@ -206,5 +206,48 @@ TempListConsumer::open(const std::string& name, int64_t size)
 		sstream = new std::stringstream(std::ios_base::out | std::ios_base::in);
 		ofs = sstream;
 	}
+	return true;
+}
+
+StreamListSource::StreamListSource(const std::vector<IOEntry>& files) : _files(files), _current(-1)
+{
+}
+
+int64_t
+StreamListSource::read(uint8_t *dst, size_t size)
+{
+	if ((_current < 0) || (_current >= _files.size())) return 0;
+	_files[_current].stream->read((char *) dst, size);
+	return _files[_current].stream->gcount();
+}
+
+bool
+StreamListSource::isError()
+{
+	if ((_current < 0) || (_current >= _files.size())) return 0;
+	return _files[_current].stream->bad();
+}
+
+bool
+StreamListSource::isEof()
+{
+	if (_current < 0) return false;
+	if (_current >= _files.size()) return true;
+	return _files[_current].stream->eof();
+}
+
+size_t
+StreamListSource::getNumComponents()
+{
+	return _files.size();
+}
+
+bool
+StreamListSource::next(std::string& name, int64_t& size)
+{
+	++_current;
+	if (_current >= _files.size()) return false;
+	name = _files[_current].name;
+	size = _files[_current].size;
 	return true;
 }

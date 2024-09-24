@@ -35,8 +35,8 @@ struct DDConfiguration : public libcdoc::Configuration {
 
 struct DDCryptoBackend : public libcdoc::CryptoBackend {
 	int decryptRSA(std::vector<uint8_t>& result, const std::vector<uint8_t> &data, bool oaep) const final;
-	std::vector<uint8_t> deriveConcatKDF(const std::vector<uint8_t> &publicKey, const std::string &digest, int keySize,
-		const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo) const final;
+	int deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::string &digest, int keySize,
+		const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo) final;
 	std::vector<uint8_t> deriveHMACExtract(const std::vector<uint8_t> &publicKey, const std::vector<uint8_t> &salt, int keySize) const final;
 	int getSecret(std::vector<uint8_t>& secret, const std::string& label) final;
 
@@ -52,15 +52,22 @@ struct DDNetworkBackend : public libcdoc::NetworkBackend, private QObject {
 	explicit DDNetworkBackend() = default;
 };
 
+struct IOEntry
+{
+	std::string name, mime;
+	int64_t size;
+	std::shared_ptr<std::istream> stream;
+};
+
 struct TempListConsumer : public libcdoc::MultiDataConsumer {
 	static constexpr int64_t MAX_VEC_SIZE = 500L * 1024L * 1024L;
 
 	size_t _max_memory_size;
-	std::vector<libcdoc::IOEntry> files;
+	std::vector<IOEntry> files;
 	explicit TempListConsumer(size_t max_memory_size = 500L * 1024L * 1024L) : _max_memory_size(max_memory_size) {}
 	~TempListConsumer();
 	int64_t write(const uint8_t *src, size_t size) override final;
-	bool close() override final;
+	int close() override final;
 	bool isError() override final;
 	bool open(const std::string& name, int64_t size) override final;
 private:
@@ -69,6 +76,18 @@ private:
 	std::stringstream *sstream = nullptr;
 	std::ofstream *fstream = nullptr;
 	std::string tmp_name;
+};
+
+struct StreamListSource : public libcdoc::MultiDataSource {
+	StreamListSource(const std::vector<IOEntry>& files);
+	int64_t read(uint8_t *dst, size_t size) override final;
+	bool isError() override final;
+	bool isEof() override final;
+	size_t getNumComponents() override final;
+	bool next(std::string& name, int64_t& size) override final;
+
+	const std::vector<IOEntry>& _files;
+	int64_t _current;
 };
 
 #endif // __CDOCSUPPORT_H__

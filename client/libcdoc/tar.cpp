@@ -115,6 +115,7 @@ libcdoc::TAR::save(libcdoc::DataConsumer& dst, libcdoc::MultiDataSource& src)
 		while (!src.isEof()) {
 			uint8_t buf[256];
 			size_t n_read = src.read(buf, 256);
+			if (n_read < 0) return false;
 			dst.write(buf, n_read);
 			total_written += n_read;
 		}

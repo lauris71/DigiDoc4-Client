@@ -547,7 +547,7 @@ void MainWindow::convertToCDoc()
 	if(!cardData.cert().isNull()) {
 		QByteArray qder = cardData.cert().toDer();
 		std::vector<uint8_t> sder = std::vector<uint8_t>(qder.cbegin(), qder.cend());
-		cryptoContainer->addEncryptionKey(std::make_shared<libcdoc::CKeyCert>(CryptoDoc::labelFromCertificate(sder), sder));
+		cryptoContainer->addEncryptionKey(std::make_shared<libcdoc::EncKeyCert>(CryptoDoc::labelFromCertificate(sder), sder));
 	}
 
 	resetCryptoDoc(cryptoContainer.release());
@@ -1165,7 +1165,7 @@ void MainWindow::updateSelectorData(TokenData data)
 		showCardMenu(false);
 }
 
-void MainWindow::updateKeys(const QList<std::shared_ptr<libcdoc::CKey>> &keys)
+void MainWindow::updateKeys(const QList<CDKey> &keys)
 {
 	if(!cryptoDoc)
 		return;
@@ -1173,7 +1173,7 @@ void MainWindow::updateKeys(const QList<std::shared_ptr<libcdoc::CKey>> &keys)
 	for(auto i = cryptoDoc->keys().size(); i != 0; i--)
 		cryptoDoc->removeKey(i - 1);
 	for(const auto &key: keys)
-		cryptoDoc->addEncryptionKey(key);
+		cryptoDoc->addEncryptionKey(key.enc_key);
 	ui->cryptoContainerPage->update(cryptoDoc->canDecrypt(qApp->signer()->tokenauth().cert()), cryptoDoc);
 }
 

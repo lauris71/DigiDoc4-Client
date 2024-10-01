@@ -48,6 +48,14 @@ struct CryptoBackend {
 	virtual std::string getLastErrorStr(int code) const;
 
 	/**
+	 * @brief Fill vector with random bytes
+	 * Trim vector to requested size and fill it with random bytes. The default implementation uses OpenSSL randomness generator.
+	 * @param dst the destination container for randomness
+	 * @param size the requested amount of random data
+	 * @return  error code or OK
+	 */
+	virtual int random(std::vector<uint8_t> dst, uint32_t size);
+	/**
 	 * @brief Derive shared secret
 	 * @param result the destination container for shared key
 	 * @param public_key ECDH public Key used to derive shared secret
@@ -94,7 +102,7 @@ struct CryptoBackend {
 	/**
 	 * @brief Get CDoc2 key material for HKDF expansion
 	 * Fetches key material for a given symmetric key (either password or key-based).
-	 * The default implementation calls getSecret and performs PBKDF2_SHA256 if key is password-based
+	 * The default implementation calls getSecret and performs PBKDF2_SHA256 if key is password-based.
 	 * @param key_material the destination container for key material
 	 * @param pw_salt the salt value for PBKDF
 	 * @param kdf_iter kdf_iter the number of KDF iterations. If kdf_iter is 0, the key is plain symmetric key instead of password.
@@ -142,7 +150,7 @@ public:
 	 * @brief Get encryption keys in given document
 	 * @return a vector of keys
 	 */
-	virtual const std::vector<std::shared_ptr<CKey>>& getKeys() = 0;
+	virtual const std::vector<std::shared_ptr<DecKey>>& getKeys() = 0;
 	/**
 	 * @brief Tests if the public key of given X509 certificate is among document keys
 	 * @param cert a X509 certificate (der)
@@ -154,7 +162,7 @@ public:
 	 * @param cert a x509 certificate (der)
 	 * @return the key or nullptr if not found
 	 */
-	virtual std::shared_ptr<libcdoc::CKey> getDecryptionKey(const Certificate &cert) = 0;
+	virtual std::shared_ptr<libcdoc::DecKey> getDecryptionKey(const Certificate &cert) = 0;
 	/**
 	 * @brief Fetches FMK from provided key
 	 * Fetches FMK (File Master Key) from the provided encryption key. Depending on the key type it uses relevant CryptoBackend and/or

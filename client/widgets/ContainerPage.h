@@ -23,6 +23,7 @@
 
 #include "common_enums.h"
 #include "widgets/MainAction.h"
+#include "CryptoDoc.h"
 
 #include <memory>
 
@@ -59,7 +60,7 @@ signals:
 	void action(int code, const QString &info1 = {}, const QString &info2 = {});
 	void addFiles(const QStringList &files);
 	void fileRemoved(int row);
-	void keysSelected(const QList<std::shared_ptr<libcdoc::CKey>> &keys);
+	void keysSelected(const QList<CDKey> &keys);
 	void moved(const QString &to);
 	void removed(int row);
 	void warning(const WarningText &warningText);

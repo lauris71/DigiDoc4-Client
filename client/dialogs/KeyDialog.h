@@ -23,10 +23,12 @@
 
 #include <QDialog>
 
+#include "CryptoDoc.h"
+
 class KeyDialog final: public QDialog
 {
 	Q_OBJECT
 
 public:
-	KeyDialog(const libcdoc::CKey &key, QWidget *parent = nullptr);
+	KeyDialog(const CDKey &key, QWidget *parent = nullptr);
 };

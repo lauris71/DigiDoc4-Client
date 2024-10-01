@@ -9,7 +9,6 @@
 
 namespace libcdoc {
 
-#if 0
 bool
 EncKey::isTheSameRecipient(const EncKey& other) const
 {
@@ -27,12 +26,6 @@ EncKey::isTheSameRecipient(const std::vector<uint8_t>& public_key) const
 	const EncKeyPKI& pki = static_cast<const EncKeyPKI&>(*this);
 	if (pki.rcpt_key.empty() || public_key.empty()) return false;
 	return pki.rcpt_key == public_key;
-}
-
-std::string
-EncKeySymmetric::getSaltForExpand() const
-{
-	return CDoc2Reader::KEK + cdoc20::header::EnumNameFMKEncryptionMethod(cdoc20::header::FMKEncryptionMethod::XOR) + label;
 }
 
 EncKeyCert::EncKeyCert(const std::string& _label, const std::vector<uint8_t> &c)
@@ -53,7 +46,6 @@ EncKeyCert::setCert(const std::vector<uint8_t> &_cert)
 	rcpt_key = pkey;
 	pk_type = (algo == libcdoc::Certificate::RSA) ? PKType::RSA : PKType::ECC;
 }
-#endif
 
 bool
 CKey::isTheSameRecipient(const CKey& other) const
@@ -72,12 +64,6 @@ CKey::isTheSameRecipient(const std::vector<uint8_t>& public_key) const
 	const CKeyPKI& pki = static_cast<const CKeyPKI&>(*this);
 	if (pki.rcpt_key.empty() || public_key.empty()) return false;
 	return pki.rcpt_key == public_key;
-}
-
-std::string
-CKeySymmetric::getSaltForExpand() const
-{
-	return CDoc2Reader::KEK + cdoc20::header::EnumNameFMKEncryptionMethod(cdoc20::header::FMKEncryptionMethod::XOR) + label;
 }
 
 std::string

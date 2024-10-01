@@ -1,5 +1,7 @@
 #include <fstream>
 
+#include <openssl/rand.h>
+
 #include "CDOC1Writer.h"
 #include "cdoc2.h"
 #include <Crypto.h>
@@ -34,6 +36,14 @@ CryptoBackend::getLastErrorStr(int code) const
 		break;
 	}
 	return "Internal error";
+}
+
+int
+CryptoBackend::random(std::vector<uint8_t> dst, uint32_t size)
+{
+	dst.resize(size);
+	int result = RAND_bytes(dst.data(), size);
+	return (result < 0) ? OPENSSL_ERROR : OK;
 }
 
 int

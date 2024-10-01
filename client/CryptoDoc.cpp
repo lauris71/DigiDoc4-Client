@@ -89,58 +89,6 @@ CryptoDoc::labelFromCertificate(const std::vector<uint8_t>& cert)
 	}(kcert);
 }
 
-int
-DDCryptoBackend::decryptRSA(std::vector<uint8_t>& result, const std::vector<uint8_t> &data, bool oaep) const
-{
-	QByteArray qdata(reinterpret_cast<const char *>(data.data()), data.size());
-	QByteArray qkek = qApp->signer()->decrypt([&qdata, &oaep](QCryptoBackend *backend) {
-			return backend->decrypt(qdata, oaep);
-	});
-	result.assign(qkek.cbegin(), qkek.cend());
-	return (result.empty()) ? OPENSSL_ERROR : OK;
-}
-
-const QString SHA256_MTH = QStringLiteral("http://www.w3.org/2001/04/xmlenc#sha256");
-const QString SHA384_MTH = QStringLiteral("http://www.w3.org/2001/04/xmlenc#sha384");
-const QString SHA512_MTH = QStringLiteral("http://www.w3.org/2001/04/xmlenc#sha512");
-const QHash<QString, QCryptographicHash::Algorithm> SHA_MTH{
-	{SHA256_MTH, QCryptographicHash::Sha256}, {SHA384_MTH, QCryptographicHash::Sha384}, {SHA512_MTH, QCryptographicHash::Sha512}
-};
-
-int
-DDCryptoBackend::deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::string &digest, int keySize,
-	const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo)
-{
-	QByteArray decryptedKey = qApp->signer()->decrypt([&publicKey, &digest, &keySize, &algorithmID, &partyUInfo, &partyVInfo](QCryptoBackend *backend) {
-			QByteArray ba(reinterpret_cast<const char *>(publicKey.data()), publicKey.size());
-			return backend->deriveConcatKDF(ba, SHA_MTH[QString::fromStdString(digest)],
-				keySize,
-				QByteArray(reinterpret_cast<const char *>(algorithmID.data()), algorithmID.size()),
-				QByteArray(reinterpret_cast<const char *>(partyUInfo.data()), partyUInfo.size()),
-				QByteArray(reinterpret_cast<const char *>(partyVInfo.data()), partyVInfo.size()));
-	});
-	dst.assign(decryptedKey.cbegin(), decryptedKey.cend());
-	return (dst.empty()) ? OPENSSL_ERROR : OK;
-}
-
-std::vector<uint8_t>
-DDCryptoBackend::deriveHMACExtract(const std::vector<uint8_t> &key_material, const std::vector<uint8_t> &salt, int keySize) const
-{
-	QByteArray qkey_material(reinterpret_cast<const char *>(key_material.data()), key_material.size());
-	QByteArray qsalt(reinterpret_cast<const char *>(salt.data()), salt.size());
-	QByteArray qkekpm = qApp->signer()->decrypt([&qkey_material, &qsalt, &keySize](QCryptoBackend *backend) {
-		return backend->deriveHMACExtract(qkey_material, qsalt, keySize);
-	});
-	return std::vector<uint8_t>(qkekpm.cbegin(), qkekpm.cend());
-}
-
-int
-DDCryptoBackend::getSecret(std::vector<uint8_t>& _secret, const std::string& _label)
-{
-	_secret = secret;
-	return OK;
-}
-
 class CryptoDoc::Private final: public QThread
 {
 	Q_OBJECT
@@ -178,7 +126,7 @@ public:
 	DDNetworkBackend network;
 
 	std::vector<IOEntry> files;
-	std::vector<std::shared_ptr<libcdoc::CKey>> keys;
+	std::vector<CDKey> keys;
 
 	const std::vector<IOEntry> &getFiles() {
 		return files;
@@ -194,6 +142,10 @@ public:
 		if (!r) {
 			WarningDialog::show(tr("Failed to open document"), tr("Unsupported file format"));
 			return nullptr;
+		}
+		keys.clear();
+		for (auto key : r->getKeys()) {
+			keys.push_back({{}, key});
 		}
 		return std::unique_ptr<libcdoc::CDocReader>(r);
 	}
@@ -231,12 +183,16 @@ void CryptoDoc::Private::run()
 		std::ofstream ofs(fileName.toStdString(), std::ios_base::binary);
 		if (ofs.bad()) return;
 		StreamListSource slsrc(files);
-		if (!crypto.secret.empty()) {
-			auto key = std::make_shared<libcdoc::EncKeySymmetric>(libcdoc::Crypto::random(), libcdoc::Crypto::random(), kdf_iter);
-			key->label = label.toStdString();
-			keys.push_back(key);
+		std::vector<std::shared_ptr<libcdoc::EncKey>> enc_keys;
+		for (auto cdkey : keys) {
+			enc_keys.push_back(cdkey.enc_key);
 		}
-		if (writer->encrypt(ofs, slsrc, keys)) {
+		if (!crypto.secret.empty()) {
+			auto key = std::make_shared<libcdoc::EncKeySymmetric>(kdf_iter);
+			key->label = label.toStdString();
+			enc_keys.push_back(key);
+		}
+		if (writer->encrypt(ofs, slsrc, enc_keys)) {
 			ofs.close();
 			// Encryption successful, open new reader
 			reader = createCDocReader(fileName.toStdString());
@@ -268,31 +224,24 @@ bool CDocumentModel::addFile(const QString &file, const QString &mime)
 			"<a href='https://www.id.ee/en/article/encrypting-large-120-mb-files/'>Read more about it</a>"));
 		return false;
 	}
-	bool present = false;
-	for (auto file : d->files) {
-		if (file.name == info.fileName().toStdString()) {
-			present = true;
-			break;
-		}
-	}
-	if (present) {
+	std::string fileName(info.fileName().toStdString());
+	if(std::any_of(d->files.cbegin(), d->files.cend(),
+			[&fileName](const auto &containerFile) { return containerFile.name == fileName; }))
+	{
 		WarningDialog::show(DocumentModel::tr("Cannot add the file to the envelope. File '%1' is already in container.")
 							.arg(FileDialog::normalized(info.fileName())));
 		return false;
 	}
 
-	std::filesystem::path p(file.toStdString());
-	int64_t size = std::filesystem::file_size(p);
-	auto data = std::make_shared<std::ifstream>(file.toStdString());
-	std::string name = QFileInfo(file).fileName().toStdString();
-	std::string id = QStringLiteral("D%1").arg(d->files.size()).toStdString();
+	auto data = std::make_unique<QFile>(file);
+	data->open(QFile::ReadOnly);
 	d->files.push_back({
-								 name,
-								 mime.toStdString(),
-								 size,
-								 data,
-							 });
-	emit added(FileDialog::normalized(QString::fromStdString(name)));
+		QFileInfo(file).fileName().toStdString(),
+		mime.toStdString(),
+		data->size(),
+		std::move(data),
+	});
+	emit added(FileDialog::normalized(info.fileName()));
 	return true;
 }
 
@@ -303,17 +252,11 @@ void CDocumentModel::addTempReference(const QString &file)
 
 QString CDocumentModel::copy(int row, const QString &dst) const
 {
-	auto files = [this, row] {
-		if (d->reader || d->writer) {
-			return d->files;
-		} else {
-			return std::vector<IOEntry>();
-		}
-	};
-	const IOEntry &file = d->getFiles().at(row);
-	if( QFile::exists(dst)) QFile::remove(dst);
-	file.stream->seekg(0);
-	if(QFile f(dst); f.open(QFile::WriteOnly) && copyIODevice(file.stream.get(), &f) == file.size)
+	auto &file = d->files.at(row);
+	if( QFile::exists( dst ) )
+		QFile::remove( dst );
+	file.data->seek(0);
+	if(QFile f(dst); f.open(QFile::WriteOnly) && copyIODevice(file.data.get(), &f) == file.size)
 		return dst;
 	WarningDialog::show(tr("Failed to save file '%1'").arg(dst));
 	return {};
@@ -405,13 +348,13 @@ bool CryptoDoc::addEncryptionKey(std::shared_ptr<libcdoc::EncKey> key )
 {
 	if(d->warnIfNotWritable())
 		return false;
-	for (std::shared_ptr<libcdoc::EncKey> k: d->keys) {
-		if (k->isTheSameRecipient(*key)) {
+	for (auto& k : d->keys) {
+		if (k.enc_key->isTheSameRecipient(*key)) {
 			WarningDialog::show(tr("Key already exists"));
 			return false;
 		}
 	}
-	d->keys.push_back(key);
+	d->keys.push_back({key, {}});
 	return true;
 }
 
@@ -544,14 +487,10 @@ bool CryptoDoc::encrypt( const QString &filename, const QString& label, const QB
 
 QString CryptoDoc::fileName() const { return d->fileName; }
 
-const std::vector<std::shared_ptr<libcdoc::CKey>>&
+const std::vector<CDKey>&
 CryptoDoc::keys() const
 {
-	if (d->writer) {
-		return d->keys;
-	} else {
-		return d->reader->getKeys();
-	}
+	return d->keys;
 }
 
 bool CryptoDoc::move(const QString &to)

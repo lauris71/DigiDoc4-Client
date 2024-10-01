@@ -23,6 +23,7 @@
 
 #include <libcdoc/cdoc.h>
 
+#include "CryptoDoc.h"
 #include "widgets/Item.h"
 
 class AddressItem final : public Item
@@ -37,10 +38,11 @@ public:
 		Added,
 	};
 
-	explicit AddressItem(std::shared_ptr<libcdoc::CKey> k, QWidget *parent = {}, bool showIcon = false);
+	explicit AddressItem(const CDKey &k, QWidget *parent = {}, bool showIcon = false);
 	~AddressItem() final;
 
-	const std::shared_ptr<libcdoc::CKey> getKey() const;
+	const CDKey& getKey() const;
+	void idChanged(const CDKey& key);
 	void idChanged(const SslCertificate &cert) final;
 	void initTabOrder(QWidget *item) final;
 	QWidget* lastTabWidget() final;

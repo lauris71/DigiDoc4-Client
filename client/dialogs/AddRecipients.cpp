@@ -107,14 +107,13 @@ AddRecipients::~AddRecipients()
 void AddRecipients::addAllRecipientToRightPane()
 {
 	QList<SslCertificate> history;
-	for(AddressItem *value: leftList)
-	{
+	for(AddressItem *value: leftList) {
 		if(rightList.contains(value->getKey()))
 			continue;
 		addRecipientToRightPane(value);
-		std::shared_ptr<libcdoc::CKey> key = value->getKey();
-		if (key->isCertificate()) {
-			std::shared_ptr<libcdoc::CKeyCert> kd = std::static_pointer_cast<libcdoc::CKeyCert>(key);
+		auto key = value->getKey();
+		if ((key.enc_key != nullptr) && key.enc_key->isCertificate()) {
+			std::shared_ptr<libcdoc::EncKeyCert> kd = std::static_pointer_cast<libcdoc::EncKeyCert>(key.enc_key);
 			QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(kd->cert.data()), kd->cert.size()));
 			history.append(kcert);
 		}
@@ -179,7 +178,11 @@ AddressItem * AddRecipients::addRecipientToLeftPane(const QSslCertificate& cert)
 
 	QByteArray qder = cert.toDer();
 	std::vector<uint8_t> sder = std::vector<uint8_t>(qder.cbegin(), qder.cend());
-	leftItem = new AddressItem(std::make_shared<libcdoc::CKeyCert>(CryptoDoc::labelFromCertificate(sder), sder), ui->leftPane);
+	CDKey key = {
+		std::make_shared<libcdoc::EncKeyCert>(CryptoDoc::labelFromCertificate(sder), sder),
+		{}
+	};
+	leftItem = new AddressItem(key, ui->leftPane);
 	leftList.insert(cert, leftItem);
 	ui->leftPane->addWidget(leftItem);
 
@@ -188,8 +191,8 @@ AddressItem * AddRecipients::addRecipientToLeftPane(const QSslCertificate& cert)
 	std::vector<uint8_t> other_key(der.cbegin(), der.cend());
 
 	bool contains = false;
-	for (std::shared_ptr<libcdoc::CKey> k: rightList) {
-		if (k->isTheSameRecipient(other_key)) {
+	for (auto k: rightList) {
+		if (k.enc_key && k.enc_key->isTheSameRecipient(other_key)) {
 			contains = true;
 			break;
 		}
@@ -207,16 +210,16 @@ AddressItem * AddRecipients::addRecipientToLeftPane(const QSslCertificate& cert)
 	return leftItem;
 }
 
-bool AddRecipients::addRecipientToRightPane(std::shared_ptr<libcdoc::CKey> key, bool update)
+bool AddRecipients::addRecipientToRightPane(const CDKey& key, bool update)
 {
-	for (std::shared_ptr<libcdoc::CKey> k: rightList) {
-		if (k->isTheSameRecipient(*key)) return false;
+	if (!key.enc_key) return false;
+	for (auto k: rightList) {
+		if (k.enc_key && k.enc_key->isTheSameRecipient(*key.enc_key)) return false;
 	}
 
-	if(update)
-	{
-		if (key->type == libcdoc::CKey::Type::CDOC1) {
-			std::shared_ptr<libcdoc::CKeyCert> kd = std::static_pointer_cast<libcdoc::CKeyCert>(key);
+	if(update) {
+		if (key.enc_key->isCertificate()) {
+			std::shared_ptr<libcdoc::EncKeyCert> kd = std::static_pointer_cast<libcdoc::EncKeyCert>(key.enc_key);
 			QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(kd->cert.data()), kd->cert.size()), QSsl::Der);
 			if(auto expiryDate = kcert.expiryDate(); expiryDate <= QDateTime::currentDateTime())
 			{
@@ -256,8 +259,8 @@ bool AddRecipients::addRecipientToRightPane(std::shared_ptr<libcdoc::CKey> key, 
 	connect(rightItem, &AddressItem::remove, this, &AddRecipients::removeRecipientFromRightPane);
 	ui->rightPane->addWidget(rightItem);
 	ui->confirm->setDisabled(rightList.isEmpty());
-	if (key->isCertificate()) {
-		std::shared_ptr<libcdoc::CKeyCert> kd = std::static_pointer_cast<libcdoc::CKeyCert>(key);
+	if (key.enc_key->isCertificate()) {
+		std::shared_ptr<libcdoc::EncKeyCert> kd = std::static_pointer_cast<libcdoc::EncKeyCert>(key.enc_key);
 		QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(kd->cert.data()), kd->cert.size()));
 		historyCertData.addAndSave({kcert});
 	}
@@ -300,9 +303,9 @@ bool AddRecipients::isUpdated() const
 	return updated;
 }
 
-QList<std::shared_ptr<libcdoc::CKey>> AddRecipients::keys()
+QList<CDKey> AddRecipients::keys()
 {
-	QList<std::shared_ptr<libcdoc::CKey>> recipients;
+	QList<CDKey> recipients;
 	for(auto *item: ui->rightPane->items)
 	{
 		if(auto *address = qobject_cast<AddressItem *>(item))
@@ -314,9 +317,9 @@ QList<std::shared_ptr<libcdoc::CKey>> AddRecipients::keys()
 void AddRecipients::removeRecipientFromRightPane(Item *toRemove)
 {
 	auto *rightItem = qobject_cast<AddressItem*>(toRemove);
-	std::shared_ptr<libcdoc::CKey> key = rightItem->getKey();
-	if (key->isCertificate()) {
-		std::shared_ptr<libcdoc::CKeyCert> kd = std::static_pointer_cast<libcdoc::CKeyCert>(key);
+	const CDKey& key = rightItem->getKey();
+	if (key.enc_key && key.enc_key->isCertificate()) {
+		std::shared_ptr<libcdoc::EncKeyCert> kd = std::static_pointer_cast<libcdoc::EncKeyCert>(key.enc_key);
 		QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(kd->cert.data()), kd->cert.size()), QSsl::Der);
 		if(auto it = leftList.find(kcert); it != leftList.end())
 		{

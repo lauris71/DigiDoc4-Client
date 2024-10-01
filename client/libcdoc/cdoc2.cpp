@@ -23,6 +23,14 @@ const std::string CDoc2Reader::KEKPREMASTER = "CDOC20kekpremaster";
 const std::string CDoc2Reader::PAYLOAD = "CDOC20payload";
 const std::string CDoc2Reader::SALT = "CDOC20salt";
 
+// Get salt bitstring for HKDF expand method
+
+static std::string
+getSaltForExpand(const std::string& label)
+{
+	return CDoc2Reader::KEK + cdoc20::header::EnumNameFMKEncryptionMethod(cdoc20::header::FMKEncryptionMethod::XOR) + label;
+}
+
 libcdoc::CKey::DecryptionStatus
 CDoc2Reader::canDecrypt(const libcdoc::Certificate &cert)
 {
@@ -55,8 +63,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::CKey &key)
 	if (key.isSymmetric()) {
 		// Symmetric key
 		const libcdoc::CKeySymmetric &sk = static_cast<const libcdoc::CKeySymmetric&>(key);
-		std::string info_str = sk.getSaltForExpand();
-
+		std::string info_str = getSaltForExpand(sk.label);
 		crypto->getKEK(kek, sk.salt, sk.pw_salt, sk.kdf_iter, sk.label, info_str);
 	} else {
 		// Public/private key
@@ -64,8 +71,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::CKey &key)
 		std::vector<uint8_t> key_material;
 		if(key.type == libcdoc::CKey::Type::SERVER) {
 			const libcdoc::CKeyServer &sk = static_cast<const libcdoc::CKeyServer&>(key);
-			std::vector<uint8_t> km = network->fetchKey(this, sk);
-			key_material.assign(km.cbegin(), km.cend());
+			key_material = network->fetchKey(this, sk);
 		} else if (key.type == libcdoc::CKey::PUBLIC_KEY) {
 			const libcdoc::CKeyPublicKey& pk = static_cast<const libcdoc::CKeyPublicKey&>(key);
 			key_material = pk.key_material;
@@ -342,7 +348,7 @@ CDoc2Writer::encrypt(std::ostream& ofs, libcdoc::MultiDataSource& src, const std
 	for(std::shared_ptr<libcdoc::EncKey> key: keys) {
 		if (key->isPKI()) {
 			const libcdoc::EncKeyPKI& pki = static_cast<const libcdoc::EncKeyPKI&>(*key);
-			if(pki.pk_type == libcdoc::CKey::PKType::RSA) {
+			if(pki.pk_type == libcdoc::EncKey::PKType::RSA) {
 				std::vector<uint8_t> kek = libcdoc::Crypto::random(fmk.size());
 				std::vector<uint8_t> xor_key = libcdoc::Crypto::xor_data(fmk, kek);
 				auto publicKey = libcdoc::Crypto::fromRSAPublicKeyDer(pki.rcpt_key);
@@ -420,9 +426,13 @@ CDoc2Writer::encrypt(std::ostream& ofs, libcdoc::MultiDataSource& src, const std
 			}
 		} else if (key->isSymmetric()) {
 			const libcdoc::EncKeySymmetric& sk = static_cast<const libcdoc::EncKeySymmetric&>(*key);
-			std::string info_str = sk.getSaltForExpand();
+			std::string info_str = getSaltForExpand(sk.label);
 			std::vector<uint8_t> kek(32);
-			crypto->getKEK(kek, sk.salt, sk.pw_salt, sk.kdf_iter, sk.label, info_str);
+			std::vector<uint8_t> salt;
+			crypto->random(salt, 32);
+			std::vector<uint8_t> pw_salt;
+			crypto->random(pw_salt, 32);
+			crypto->getKEK(kek, salt, pw_salt, sk.kdf_iter, sk.label, info_str);
 			if (sk.kdf_iter > 0) {
 				// PasswordKeyMaterial_i = PBKDF2(Password_i, PasswordSalt_i)
 //				std::vector<uint8_t> key_material = libcdoc::Crypto::pbkdf2_sha256(secret, sk.pw_salt, sk.kdf_iter);
@@ -436,7 +446,7 @@ CDoc2Writer::encrypt(std::ostream& ofs, libcdoc::MultiDataSource& src, const std
 
 				std::vector<uint8_t> xor_key = libcdoc::Crypto::xor_data(fmk, kek);
 
-				auto capsule = cdoc20::recipients::CreatePBKDF2Capsule(builder, builder.CreateVector(sk.salt), builder.CreateVector(sk.pw_salt), cdoc20::recipients::KDFAlgorithmIdentifier::PBKDF2WithHmacSHA256, sk.kdf_iter);
+				auto capsule = cdoc20::recipients::CreatePBKDF2Capsule(builder, builder.CreateVector(salt), builder.CreateVector(pw_salt), cdoc20::recipients::KDFAlgorithmIdentifier::PBKDF2WithHmacSHA256, sk.kdf_iter);
 				auto offs = cdoc20::header::CreateRecipientRecord(builder,
 																  cdoc20::recipients::Capsule::PBKDF2Capsule, capsule.Union(),
 																  builder.CreateString(sk.label), builder.CreateVector(xor_key), cdoc20::header::FMKEncryptionMethod::XOR);
@@ -452,7 +462,7 @@ CDoc2Writer::encrypt(std::ostream& ofs, libcdoc::MultiDataSource& src, const std
 
 				std::vector<uint8_t> xor_key = libcdoc::Crypto::xor_data(fmk, kek);
 
-				auto capsule = cdoc20::recipients::CreateSymmetricKeyCapsule(builder, builder.CreateVector(sk.salt));
+				auto capsule = cdoc20::recipients::CreateSymmetricKeyCapsule(builder, builder.CreateVector(salt));
 				auto offs = cdoc20::header::CreateRecipientRecord(builder,
 																  cdoc20::recipients::Capsule::SymmetricKeyCapsule, capsule.Union(),
 																  builder.CreateString(sk.label), builder.CreateVector(xor_key), cdoc20::header::FMKEncryptionMethod::XOR);

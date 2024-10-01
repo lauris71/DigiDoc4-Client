@@ -7,7 +7,6 @@
 
 namespace libcdoc {
 
-#if 0
 struct EncKey {
 	enum Type {
 		SYMMETRIC_KEY,
@@ -39,17 +38,11 @@ private:
 // Symmetric key (plain or PBKDF)
 
 struct EncKeySymmetric : public EncKey {
-	std::vector<uint8_t> salt;
-	// PBKDF
-	std::vector<uint8_t> pw_salt;
 	// 0 symmetric key, >0 password
 	int32_t kdf_iter;
 
-	EncKeySymmetric(const std::vector<uint8_t>& _salt) : EncKey(Type::SYMMETRIC_KEY), salt(_salt), kdf_iter(0) {}
-	EncKeySymmetric(const std::vector<uint8_t>& _salt, const std::vector<uint8_t>& _pw_salt, int32_t _kdf_iter) : EncKey(Type::SYMMETRIC_KEY), salt(_salt), pw_salt(_pw_salt), kdf_iter(_kdf_iter) {}
-
-	// Get salt bitstring for HKDF expand method
-	std::string getSaltForExpand() const;
+	EncKeySymmetric() : EncKey(Type::SYMMETRIC_KEY), kdf_iter(0) {}
+	EncKeySymmetric(int32_t _kdf_iter) : EncKey(Type::SYMMETRIC_KEY), kdf_iter(_kdf_iter) {}
 };
 
 // Base PKI key
@@ -77,7 +70,6 @@ struct EncKeyCert : public EncKeyPKI {
 protected:
 	EncKeyCert() : EncKeyPKI(EncKey::Type::CERTIFICATE) {};
 };
-#endif
 
 struct CKey
 {
@@ -137,9 +129,6 @@ struct CKeySymmetric : public CKey {
 
 	CKeySymmetric(const std::vector<uint8_t>& _salt) : CKey(Type::SYMMETRIC_KEY), salt(_salt), kdf_iter(0) {}
 	CKeySymmetric(const std::vector<uint8_t>& _salt, const std::vector<uint8_t>& _pw_salt, int32_t _kdf_iter) : CKey(Type::SYMMETRIC_KEY), salt(_salt), pw_salt(_pw_salt), kdf_iter(_kdf_iter) {}
-
-	// Get salt bitstring for HKDF expand method
-	std::string getSaltForExpand() const;
 };
 
 // Base PKI key
@@ -214,10 +203,11 @@ struct CKeyCDoc1 : public libcdoc::CKeyCert {
 	CKeyCDoc1() : CKeyCert(Type::CDOC1) {};
 };
 
-typedef CKey EncKey;
-typedef CKeyCert EncKeyCert;
-typedef CKeySymmetric EncKeySymmetric;
-typedef CKeyPKI EncKeyPKI;
+//typedef CKey EncKey;
+typedef CKey DecKey;
+//typedef CKeyCert EncKeyCert;
+//typedef CKeySymmetric EncKeySymmetric;
+//typedef CKeyPKI EncKeyPKI;
 
 } // namespace libcdoc
 

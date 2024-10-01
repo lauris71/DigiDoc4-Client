@@ -32,12 +32,12 @@ class AddressItem::Private: public Ui::AddressItem
 {
 public:
 	QString code;
-	std::shared_ptr<libcdoc::CKey> key;
+	CDKey key;
 	QString label;
 	bool yourself = false;
 };
 
-AddressItem::AddressItem(std::shared_ptr<libcdoc::CKey> key, QWidget *parent, bool showIcon)
+AddressItem::AddressItem(const CDKey& key, QWidget *parent, bool showIcon)
 	: Item(parent)
 	, ui(new Private)
 {
@@ -60,19 +60,62 @@ AddressItem::AddressItem(std::shared_ptr<libcdoc::CKey> key, QWidget *parent, bo
         ui->decrypt->hide();
     }
 
+<<<<<<< HEAD
     if (ui->key->isCDoc1()) {
 		std::shared_ptr<CKeyCDoc1> key = std::static_pointer_cast<CKeyCDoc1>(ui->key);
 		ui->code = SslCertificate(key->cert).personalCode().toHtmlEscaped();
 		ui->label = (!key->cert.subjectInfo("GN").isEmpty() && !key->cert.subjectInfo("SN").isEmpty() ?
 				key->cert.subjectInfo("GN").join(' ') + " " + key->cert.subjectInfo("SN").join(' ') :
 				key->cert.subjectInfo("CN").join(' '));
+=======
+	if (key.dec_key && key.dec_key->isSymmetric()) {
+		ui->decrypt->show();
+		connect(ui->decrypt, &QToolButton::clicked, this, [this]{ emit decrypt(ui->key.dec_key);});
+>>>>>>> f301297 (Split cdoc keys into enc and dec keys)
 	} else {
 		ui->code = {};
         ui->label = key->label;
 	}
+<<<<<<< HEAD
     if(ui->label.isEmpty() && ui->key->type == libcdoc::CKey::PUBLIC_KEY) {
         const libcdoc::CKeyPublicKey& pk = static_cast<const libcdoc::CKeyPublicKey&>(*ui->key);
         ui->label = pk.fromKeyLabel().value(QStringLiteral("cn"), key->label);
+=======
+
+	ui->add->setFont(Styles::font(Styles::Condensed, 12));
+	ui->added->setFont(ui->add->font());
+
+	if (ui->key.enc_key && ui->key.enc_key->isCertificate()) {
+		std::shared_ptr<libcdoc::EncKeyCert> kd = std::static_pointer_cast<libcdoc::EncKeyCert>(ui->key.enc_key);
+		QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(kd->cert.data()), kd->cert.size()), QSsl::Der);
+		ui->code = SslCertificate(kcert).personalCode().toHtmlEscaped();
+		ui->label = (!kcert.subjectInfo("GN").isEmpty() && !kcert.subjectInfo("SN").isEmpty() ?
+						 kcert.subjectInfo("GN").join(' ') + " " + kcert.subjectInfo("SN").join(' ') :
+						 kcert.subjectInfo("CN").join(' ')).toHtmlEscaped();
+	} else if (ui->key.dec_key && ui->key.dec_key->isCertificate()) {
+			std::shared_ptr<libcdoc::CKeyCert> kd = std::static_pointer_cast<libcdoc::CKeyCert>(ui->key.dec_key);
+			QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(kd->cert.data()), kd->cert.size()), QSsl::Der);
+			ui->code = SslCertificate(kcert).personalCode().toHtmlEscaped();
+			ui->label = (!kcert.subjectInfo("GN").isEmpty() && !kcert.subjectInfo("SN").isEmpty() ?
+							 kcert.subjectInfo("GN").join(' ') + " " + kcert.subjectInfo("SN").join(' ') :
+							 kcert.subjectInfo("CN").join(' ')).toHtmlEscaped();
+	} else {
+		ui->code.clear();
+		if (ui->key.enc_key) {
+			ui->label = QString::fromStdString(key.enc_key->label).toHtmlEscaped();
+		} else if (ui->key.dec_key) {
+			ui->label = QString::fromStdString(key.dec_key->label).toHtmlEscaped();
+		}
+	}
+	if(ui->label.isEmpty()) {
+		if (ui->key.enc_key && (ui->key.enc_key->type == libcdoc::EncKey::PUBLIC_KEY)) {
+			const libcdoc::EncKeyPKI& pk = static_cast<const libcdoc::EncKeyPKI&>(*ui->key.enc_key);
+			ui->label = QString::fromUtf8(reinterpret_cast<const char *>(pk.rcpt_key.data()), pk.rcpt_key.size());
+		} else if (ui->key.dec_key && (ui->key.dec_key->type == libcdoc::CKey::PUBLIC_KEY)) {
+			const libcdoc::CKeyPublicKey& pk = static_cast<const libcdoc::CKeyPublicKey&>(*ui->key.dec_key);
+			ui->label = QString::fromUtf8(reinterpret_cast<const char *>(pk.key_material.data()), pk.key_material.size());
+		}
+>>>>>>> f301297 (Split cdoc keys into enc and dec keys)
 	}
 	setIdType();
 	showButton(AddressItem::Remove);
@@ -94,16 +137,44 @@ void AddressItem::changeEvent(QEvent* event)
 	QWidget::changeEvent(event);
 }
 
+<<<<<<< HEAD
 const std::shared_ptr<libcdoc::CKey> AddressItem::getKey() const
+=======
+bool AddressItem::eventFilter(QObject *o, QEvent *e)
+{
+	if((o == ui->name || o == ui->idType) && e->type() == QEvent::MouseButtonRelease)
+	{
+		(new KeyDialog(ui->key, this))->open();
+		return true;
+	}
+	return Item::eventFilter(o, e);
+}
+
+const CDKey& AddressItem::getKey() const
+>>>>>>> f301297 (Split cdoc keys into enc and dec keys)
 {
 	return ui->key;
 }
 
+<<<<<<< HEAD
+=======
+void AddressItem::idChanged(const CDKey& key)
+{
+	ui->yourself = (ui->key.enc_key && key.enc_key && key.enc_key->isTheSameRecipient(*ui->key.enc_key)) ||
+			(ui->key.dec_key && ui->key.dec_key && key.dec_key->isTheSameRecipient(*ui->key.dec_key));
+	setName();
+}
+
+>>>>>>> f301297 (Split cdoc keys into enc and dec keys)
 void AddressItem::idChanged(const SslCertificate &cert)
 {
 	QByteArray qder = cert.toDer();
 	std::vector<uint8_t> sder = std::vector<uint8_t>(qder.cbegin(), qder.cend());
-	idChanged(std::make_shared<libcdoc::CKeyCert>(CryptoDoc::labelFromCertificate(sder), sder));
+	CDKey key = {
+		std::make_shared<libcdoc::EncKeyCert>(CryptoDoc::labelFromCertificate(sder), sder),
+		std::make_shared<libcdoc::CKeyCert>(CryptoDoc::labelFromCertificate(sder), sder)
+	};
+	idChanged(key);
 }
 
 void AddressItem::initTabOrder(QWidget *item)
@@ -123,8 +194,12 @@ QWidget* AddressItem::lastTabWidget()
 
 void AddressItem::mouseReleaseEvent(QMouseEvent * /*event*/)
 {
+<<<<<<< HEAD
 	if(!ui->key->unsupported)
         (new KeyDialog(*ui->key))->open();
+=======
+	(new KeyDialog(ui->key, this))->open();
+>>>>>>> f301297 (Split cdoc keys into enc and dec keys)
 }
 
 void AddressItem::setName()
@@ -149,11 +224,11 @@ void AddressItem::stateChange(ContainerState state)
 
 void AddressItem::setIdType()
 {
-	ui->expire->clear();
-    if (ui->key->isPKI()) {
-        std::shared_ptr<libcdoc::CKeyPKI> pki = std::static_pointer_cast<libcdoc::CKeyPKI>(ui->key);
-        if (ui->key->isCertificate()) {
-            std::shared_ptr<libcdoc::CKeyCert> ckd = std::static_pointer_cast<libcdoc::CKeyCert>(ui->key);
+	if (!ui->key.dec_key) return;
+	if (ui->key.dec_key->isPKI()) {
+		std::shared_ptr<libcdoc::CKeyPKI> pki = std::static_pointer_cast<libcdoc::CKeyPKI>(ui->key.dec_key);
+		if (ui->key.dec_key->isCertificate()) {
+			std::shared_ptr<libcdoc::CKeyCert> ckd = std::static_pointer_cast<libcdoc::CKeyCert>(ui->key.dec_key);
             ui->idType->setHidden(false);
             QString str;
             SslCertificate cert(ckd->cert);
@@ -212,7 +287,7 @@ void AddressItem::setIdType()
             ui->idType->setText(type + " public key");
         }
     } else if (ui->key->isSymmetric()) {
-        std::shared_ptr<CKeySymmetric> ckd = std::static_pointer_cast<CKeySymmetric>(ui->key);
+        std::shared_ptr<libcdoc::CKeySymmetric> ckd = std::static_pointer_cast<libcdoc::CKeySymmetric>(ui->key.dec_key);
         ui->idType->setHidden(false);
         if (ckd->kdf_iter > 0) {
             ui->idType->setText("Password derived key");

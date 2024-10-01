@@ -31,6 +31,7 @@
 #include "Application.h"
 #include "CheckConnection.h"
 #include "Colors.h"
+#include "QCryptoBackend.h"
 #include "QSigner.h"
 #include "Settings.h"
 #include "TokenData.h"
@@ -38,6 +39,58 @@
 #include "effects/FadeInNotification.h"
 
 #include "CDocSupport.h"
+
+int
+DDCryptoBackend::decryptRSA(std::vector<uint8_t>& result, const std::vector<uint8_t> &data, bool oaep) const
+{
+	QByteArray qdata(reinterpret_cast<const char *>(data.data()), data.size());
+	QByteArray qkek = qApp->signer()->decrypt([&qdata, &oaep](QCryptoBackend *backend) {
+			return backend->decrypt(qdata, oaep);
+	});
+	result.assign(qkek.cbegin(), qkek.cend());
+	return (result.empty()) ? OPENSSL_ERROR : OK;
+}
+
+const QString SHA256_MTH = QStringLiteral("http://www.w3.org/2001/04/xmlenc#sha256");
+const QString SHA384_MTH = QStringLiteral("http://www.w3.org/2001/04/xmlenc#sha384");
+const QString SHA512_MTH = QStringLiteral("http://www.w3.org/2001/04/xmlenc#sha512");
+const QHash<QString, QCryptographicHash::Algorithm> SHA_MTH{
+	{SHA256_MTH, QCryptographicHash::Sha256}, {SHA384_MTH, QCryptographicHash::Sha384}, {SHA512_MTH, QCryptographicHash::Sha512}
+};
+
+int
+DDCryptoBackend::deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::string &digest, int keySize,
+	const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo)
+{
+	QByteArray decryptedKey = qApp->signer()->decrypt([&publicKey, &digest, &keySize, &algorithmID, &partyUInfo, &partyVInfo](QCryptoBackend *backend) {
+			QByteArray ba(reinterpret_cast<const char *>(publicKey.data()), publicKey.size());
+			return backend->deriveConcatKDF(ba, SHA_MTH[QString::fromStdString(digest)],
+				keySize,
+				QByteArray(reinterpret_cast<const char *>(algorithmID.data()), algorithmID.size()),
+				QByteArray(reinterpret_cast<const char *>(partyUInfo.data()), partyUInfo.size()),
+				QByteArray(reinterpret_cast<const char *>(partyVInfo.data()), partyVInfo.size()));
+	});
+	dst.assign(decryptedKey.cbegin(), decryptedKey.cend());
+	return (dst.empty()) ? OPENSSL_ERROR : OK;
+}
+
+std::vector<uint8_t>
+DDCryptoBackend::deriveHMACExtract(const std::vector<uint8_t> &key_material, const std::vector<uint8_t> &salt, int keySize) const
+{
+	QByteArray qkey_material(reinterpret_cast<const char *>(key_material.data()), key_material.size());
+	QByteArray qsalt(reinterpret_cast<const char *>(salt.data()), salt.size());
+	QByteArray qkekpm = qApp->signer()->decrypt([&qkey_material, &qsalt, &keySize](QCryptoBackend *backend) {
+		return backend->deriveHMACExtract(qkey_material, qsalt, keySize);
+	});
+	return std::vector<uint8_t>(qkekpm.cbegin(), qkekpm.cend());
+}
+
+int
+DDCryptoBackend::getSecret(std::vector<uint8_t>& _secret, const std::string& _label)
+{
+	_secret = secret;
+	return OK;
+}
 
 bool
 checkConnection()
@@ -150,16 +203,19 @@ DDNetworkBackend::fetchKey(libcdoc::CDocReader *reader, const libcdoc::CKeyServe
 
 TempListConsumer::~TempListConsumer()
 {
-	if (ofs) delete ofs;
+	if (!files.empty()) {
+		IOEntry& file = files.back();
+		file.data->close();
+	}
 }
 
 int64_t
 TempListConsumer::write(const uint8_t *src, size_t size)
 {
-	if (!ofs) return OUTPUT_ERROR;
+	if (files.empty()) return OUTPUT_ERROR;
 	IOEntry& file = files.back();
-	ofs->write((const char *) src, size);
-	if (!ofs) return OUTPUT_STREAM_ERROR;
+	if (!file.data->isWritable()) return OUTPUT_ERROR;
+	if (file.data->write((const char *) src, size) != size) return OUTPUT_STREAM_ERROR;
 	file.size += size;
 	return size;
 }
@@ -167,45 +223,31 @@ TempListConsumer::write(const uint8_t *src, size_t size)
 int
 TempListConsumer::close()
 {
+	if (files.empty()) return OUTPUT_ERROR;
 	IOEntry& file = files.back();
-	if (fstream) {
-		fstream->close();
-		file.stream = std::make_shared<std::ifstream>(tmp_name);
-		fstream = nullptr;
-		ofs = nullptr;
-		return OK;
-	} else if (sstream) {
-		file.stream = std::shared_ptr<std::istream>(sstream);
-		file.stream->seekg(0);
-		sstream = nullptr;
-		ofs = nullptr;
-		return OK;
-	} else {
-		return OUTPUT_STREAM_ERROR;
-	}
+	if (!file.data->isWritable()) return OUTPUT_ERROR;
+	return OK;
 }
 
 bool
 TempListConsumer::isError()
 {
-	return sstream && sstream->bad();
+	if (files.empty()) return false;
+	IOEntry& file = files.back();
+	return !file.data->isWritable();
 }
 
 bool
 TempListConsumer::open(const std::string& name, int64_t size)
 {
-	if (ofs) return false;
-	files.push_back({name, "application/octet-stream", 0, nullptr});
+	IOEntry io({name, "application/octet-stream", 0, {}});
 	if ((size < 0) || (size > MAX_VEC_SIZE)) {
-		char name[L_tmpnam];
-		// fixme:
-		std::tmpnam(name);
-		fstream = new std::ofstream(name);
-		ofs = fstream;
+		io.data = std::make_unique<QTemporaryFile>();
 	} else {
-		sstream = new std::stringstream(std::ios_base::out | std::ios_base::in);
-		ofs = sstream;
+		io.data = std::make_unique<QBuffer>();
 	}
+	io.data->open(QIODevice::ReadWrite);
+	files.push_back(std::move(io));
 	return true;
 }
 
@@ -217,15 +259,14 @@ int64_t
 StreamListSource::read(uint8_t *dst, size_t size)
 {
 	if ((_current < 0) || (_current >= _files.size())) return 0;
-	_files[_current].stream->read((char *) dst, size);
-	return _files[_current].stream->gcount();
+	return _files[_current].data->read((char *) dst, size);
 }
 
 bool
 StreamListSource::isError()
 {
 	if ((_current < 0) || (_current >= _files.size())) return 0;
-	return _files[_current].stream->bad();
+	return _files[_current].data->isReadable();
 }
 
 bool
@@ -233,7 +274,7 @@ StreamListSource::isEof()
 {
 	if (_current < 0) return false;
 	if (_current >= _files.size()) return true;
-	return _files[_current].stream->eof();
+	return _files[_current].data->atEnd();
 }
 
 size_t

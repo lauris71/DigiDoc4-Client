@@ -33,6 +33,14 @@
 
 class QSslKey;
 
+struct CDKey {
+	std::shared_ptr<libcdoc::EncKey> enc_key;
+	std::shared_ptr<libcdoc::DecKey> dec_key;
+	bool operator== (const CDKey& rhs) const {
+		return (enc_key == rhs.enc_key) && (dec_key == rhs.dec_key);
+	}
+};
+
 class CryptoDoc final: public QObject
 {
 	Q_OBJECT
@@ -48,7 +56,7 @@ public:
 	bool encrypt(const QString &filename = {}, const QString& label = {}, const QByteArray& secret = {}, uint32_t kdf_iter = 0);
 	DocumentModel* documentModel() const;
 	QString fileName() const;
-	const std::vector<std::shared_ptr<libcdoc::CKey>>& keys() const;
+	const std::vector<CDKey>& keys() const;
 	bool move(const QString &to);
 	bool open( const QString &file );
 	void removeKey( int id );

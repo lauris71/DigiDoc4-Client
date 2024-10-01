@@ -313,10 +313,10 @@ void ContainerPage::transition(CryptoDoc *container, const QSslCertificate &cert
 	isSupported = container->state() & UnencryptedContainer || container->canDecrypt(cert);
 	setHeader(container->fileName());
     bool hasUnsupported = false;
-    for(std::shared_ptr<libcdoc::CKey>& key: container->keys()) {
+    for(auto& key: container->keys()) {
 		hasUnsupported = std::max(hasUnsupported, key->unsupported);
         AddressItem *addr = new AddressItem(key, ui->rightPane, true);
-        connect(addr, &AddressItem::decrypt, this, [this,key]{emit decryptReq(key);});
+        connect(addr, &AddressItem::decrypt, this, [this,key]{emit decryptReq(key.dec_key);});
         ui->rightPane->addWidget(addr);
     }
 	if(hasUnsupported)
@@ -389,10 +389,10 @@ void ContainerPage::update(CryptoDoc* container, const QSslCertificate &cert)
 	hasEmptyFile = false;
 	bool hasUnsupported = false;
     ui->rightPane->clear();
-    for(const std::shared_ptr<libcdoc::CKey>& key: container->keys()) {
+    for(auto& key: container->keys()) {
 		hasUnsupported = std::max(hasUnsupported, key->unsupported);
         AddressItem *addr = new AddressItem(key, ui->rightPane, true);
-        connect(addr, &AddressItem::decrypt, this, [this,key]{emit decryptReq(key);});
+        connect(addr, &AddressItem::decrypt, this, [this,key]{emit decryptReq(key.dec_key);});
         ui->rightPane->addWidget(addr);
     }
 	if(hasUnsupported)

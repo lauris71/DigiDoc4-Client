@@ -176,23 +176,23 @@ encrypt(int argc, char *argv[])
 		}
 	}
 	if (rcpts.empty() || files.empty() || out.empty()) print_usage(std::cerr, 1);
-	std::vector<std::shared_ptr<libcdoc::CKey>> keys;
+	std::vector<std::shared_ptr<libcdoc::EncKey>> keys;
 	std::map<std::string,std::vector<uint8_t>> secrets;
 	for (const Recipient& r : rcpts) {
-		libcdoc::CKey *key = nullptr;
+		libcdoc::EncKey *key = nullptr;
 		if (r.type == Recipient::Type::CERT) {
-			key = new libcdoc::CKeyCert(r.label, r.data);
+			key = new libcdoc::EncKeyCert(r.label, r.data);
 			secrets[r.label] = {};
 		} else if (r.type == Recipient::Type::KEY) {
-			key = new libcdoc::CKeySymmetric(libcdoc::Crypto::random(), {}, 0);
+			key = new libcdoc::EncKeySymmetric(0);
 			key->label = r.label;
 			secrets[r.label] = r.data;
 		} else if (r.type == Recipient::Type::PASSWORD) {
-			key = new libcdoc::CKeySymmetric(libcdoc::Crypto::random(), libcdoc::Crypto::random(), 65535);
+			key = new libcdoc::EncKeySymmetric(65535);
 			key->label = r.label;
 			secrets[r.label] = r.data;
 		}
-		keys.push_back(std::shared_ptr<libcdoc::CKey>(key));
+		keys.push_back(std::shared_ptr<libcdoc::EncKey>(key));
 	}
 	ToolConf conf;
 	ToolCrypto crypto(secrets);

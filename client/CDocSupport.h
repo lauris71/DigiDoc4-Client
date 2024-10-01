@@ -56,7 +56,8 @@ struct IOEntry
 {
 	std::string name, mime;
 	int64_t size;
-	std::shared_ptr<std::istream> stream;
+	//std::shared_ptr<std::istream> stream;
+	std::unique_ptr<QIODevice> data;
 };
 
 struct TempListConsumer : public libcdoc::MultiDataConsumer {
@@ -71,11 +72,11 @@ struct TempListConsumer : public libcdoc::MultiDataConsumer {
 	bool isError() override final;
 	bool open(const std::string& name, int64_t size) override final;
 private:
-	std::ostream *ofs = nullptr;
+	//std::ostream *ofs = nullptr;
 
-	std::stringstream *sstream = nullptr;
-	std::ofstream *fstream = nullptr;
-	std::string tmp_name;
+	//std::stringstream *sstream = nullptr;
+	//std::ofstream *fstream = nullptr;
+	//std::string tmp_name;
 };
 
 struct StreamListSource : public libcdoc::MultiDataSource {

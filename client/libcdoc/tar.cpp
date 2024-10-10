@@ -2,6 +2,85 @@
 
 #include "tar.h"
 
+template<std::size_t SIZE>
+static int64_t fromOctal(const std::array<char,SIZE> &data)
+{
+	int64_t i = 0;
+	for(const char c: data)
+	{
+		if(c < '0' || c > '7')
+			continue;
+		i <<= 3;
+		i += c - '0';
+	}
+	return i;
+}
+
+template<std::size_t SIZE>
+static void toOctal(std::array<char,SIZE> &data, int64_t value)
+{
+	data.fill(' ');
+	for(auto it = data.rbegin() + 1; it != data.rend(); ++it)
+	{
+		*it = char(value & 7) + '0';
+		value >>= 3;
+	}
+}
+
+struct Header {
+	std::array<char,100> name;
+	std::array<char,  8> mode;
+	std::array<char,  8> uid;
+	std::array<char,  8> gid;
+	std::array<char, 12> size;
+	std::array<char, 12> mtime;
+	std::array<char,  8> chksum;
+	char typeflag;
+	std::array<char,100> linkname;
+	std::array<char,  6> magic;
+	std::array<char,  2> version;
+	std::array<char, 32> uname;
+	std::array<char, 32> gname;
+	std::array<char,  8> devmajor;
+	std::array<char,  8> devminor;
+	std::array<char,155> prefix;
+	std::array<char, 12> padding;
+
+	std::pair<int64_t,int64_t> checksum() const
+	{
+		int64_t unsignedSum = 0;
+		int64_t signedSum = 0;
+		for (size_t i = 0, size = sizeof(Header); i < size; i++) {
+			unsignedSum += ((unsigned char*) this)[i];
+			signedSum += ((signed char*) this)[i];
+		}
+		return {unsignedSum, signedSum};
+	}
+
+	bool isNull() {
+		Header empty = {};
+		return std::memcmp(this, &empty, sizeof(Header)) == 0;
+	}
+
+	bool verify() {
+		auto copy = chksum;
+		chksum.fill(' ');
+		auto checkSum = checksum();
+		chksum.swap(copy);
+		int64_t referenceChecksum = fromOctal(chksum);
+		return referenceChecksum == checkSum.first ||
+			   referenceChecksum == checkSum.second;
+	}
+
+	static const Header Empty;
+	static const int Size;
+};
+
+static int padding(int64_t size)
+{
+	return sizeof(Header) - size % sizeof(Header);
+}
+
 bool
 libcdoc::TAR::files(libcdoc::DataSource *src, bool &warning, libcdoc::MultiDataConsumer *dst)
 {
@@ -67,26 +146,29 @@ libcdoc::TAR::files(libcdoc::DataSource *src, bool &warning, libcdoc::MultiDataC
 	return true;
 }
 
+int64_t writePadding(libcdoc::DataConsumer *dst, uint64_t size) {
+	std::vector<char> pad(padding(size), 0);
+	return dst->write((const uint8_t *) pad.data(), pad.size()) == pad.size();
+};
+
+int64_t writeHeader (libcdoc::DataConsumer *dst, Header &h, uint64_t size) {
+	h.chksum.fill(' ');
+	toOctal(h.size, size);
+	toOctal(h.chksum, h.checksum().first);
+	return dst->write((const uint8_t *)&h, sizeof(Header)) == sizeof(Header);
+};
+
+std::string toPaxRecord (const std::string &keyword, const std::string &value) {
+	std::string record = ' ' + keyword + '=' + value + '\n';
+	std::string result;
+	for(auto len = record.size() + 1; result.size() != len; ++len)
+		result = std::to_string(len + 1) + record;
+	return result;
+};
+
 bool
 libcdoc::TAR::save(libcdoc::DataConsumer& dst, libcdoc::MultiDataSource& src)
 {
-	auto writeHeader = [&dst](Header &h, uint64_t size) {
-		h.chksum.fill(' ');
-		toOctal(h.size, size);
-		toOctal(h.chksum, h.checksum().first);
-		return dst.write((const uint8_t *)&h, sizeof(Header)) == sizeof(Header);
-	};
-	auto writePadding = [&dst](uint64_t size) {
-		std::vector<char> pad(padding(size), 0);
-		return dst.write((const uint8_t *) pad.data(), pad.size()) == pad.size();
-	};
-	auto toPaxRecord = [](const std::string &keyword, const std::string &value) {
-		std::string record = ' ' + keyword + '=' + value + '\n';
-		std::string result;
-		for(auto len = record.size() + 1; result.size() != len; ++len)
-			result = std::to_string(len + 1) + record;
-		return result;
-	};
 	std::string name;
 	int64_t size;
 	while (src.next(name, size)) {
@@ -102,14 +184,14 @@ libcdoc::TAR::save(libcdoc::DataConsumer& dst, libcdoc::MultiDataSource& src)
 				paxData += toPaxRecord("path", filename);
 			if(size > 07777777)
 				paxData += toPaxRecord("size", std::to_string(size));
-			if(!writeHeader(h, paxData.size()) ||
+			if(!writeHeader(&dst, h, paxData.size()) ||
 				dst.write((const uint8_t *) paxData.data(), paxData.size()) != paxData.size() ||
-				!writePadding(paxData.size()))
+				!writePadding(&dst, paxData.size()))
 				return false;
 		}
 
 		h.typeflag = '0';
-		if(!writeHeader(h, size))
+		if(!writeHeader(&dst, h, size))
 			return false;
 		size_t total_written = 0;
 		while (!src.isEof()) {
@@ -119,10 +201,80 @@ libcdoc::TAR::save(libcdoc::DataConsumer& dst, libcdoc::MultiDataSource& src)
 			dst.write(buf, n_read);
 			total_written += n_read;
 		}
-		writePadding(total_written);
+		writePadding(&dst, total_written);
 
 	}
 	Header empty = {};
 	return dst.write((const uint8_t *)&empty, sizeof(Header)) == sizeof(Header) &&
 		dst.write((const uint8_t *)&empty, sizeof(Header)) == sizeof(Header);
+}
+
+libcdoc::TarConsumer::TarConsumer(DataConsumer *dst, bool take_ownership)
+	: _dst(dst), _owned(take_ownership), _current_size(0)
+{
+
+}
+
+libcdoc::TarConsumer::~TarConsumer()
+{
+	if (_owned) {
+		delete _dst;
+	}
+}
+
+int64_t
+libcdoc::TarConsumer::write(const uint8_t *src, size_t size)
+{
+	return _dst->write(src, size);
+}
+
+int
+libcdoc::TarConsumer::close()
+{
+	if (_current_size) {
+		writePadding(_dst, _current_size);
+	}
+	Header empty = {};
+	_dst->write((const uint8_t *)&empty, sizeof(Header));
+	_dst->write((const uint8_t *)&empty, sizeof(Header));
+	if (_owned) {
+		_dst->close();
+	}
+	return OK;
+}
+
+bool
+libcdoc::TarConsumer::isError()
+{
+	return _dst->isError();
+}
+
+int
+libcdoc::TarConsumer::open(const std::string& name, int64_t size)
+{
+	if (_current_size) {
+		writePadding(_dst, _current_size);
+	}
+	_current_size = size;
+	Header h {};
+	std::string filename(name);
+	std::string filenameTruncated(filename.begin(), filename.begin() + h.name.size());
+	std::copy(filenameTruncated.cbegin(), filenameTruncated.cend(), h.name.begin());
+
+	if(filename.size() > 100 || size > 07777777) {
+		h.typeflag = 'x';
+		std::string paxData;
+		if(filename.size() > 100)
+			paxData += toPaxRecord("path", filename);
+		if(size > 07777777)
+			paxData += toPaxRecord("size", std::to_string(size));
+		if(!writeHeader(_dst, h, paxData.size()) ||
+			_dst->write((const uint8_t *) paxData.data(), paxData.size()) != paxData.size() ||
+			!writePadding(_dst, paxData.size()))
+			return false;
+	}
+
+	h.typeflag = '0';
+	if(writeHeader(_dst, h, size) < 0) return OUTPUT_ERROR;
+	return OK;
 }

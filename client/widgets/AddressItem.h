@@ -43,7 +43,6 @@ public:
 	~AddressItem() final;
 
 	const CDKey& getKey() const;
-	void idChanged(const CDKey& key);
 	void idChanged(const SslCertificate &cert) final;
 	void initTabOrder(QWidget *item) final;
 	QWidget* lastTabWidget() final;
@@ -51,7 +50,7 @@ public:
 	void stateChange(ria::qdigidoc4::ContainerState state) final;
 
 signals:
-	void decrypt(std::shared_ptr<libcdoc::CKey> key);
+	void decrypt(const libcdoc::Lock *lock);
 
 private:
 	void changeEvent(QEvent *event) final;

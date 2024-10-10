@@ -28,14 +28,16 @@
 
 #include <libcdoc/cdoc.h>
 #include <libcdoc/certificate.h>
+#include <libcdoc/Lock.h>
+#include <libcdoc/Recipient.h>
 
 #include <memory>
 
 class QSslKey;
 
 struct CDKey {
-	std::shared_ptr<libcdoc::EncKey> enc_key;
-	std::shared_ptr<libcdoc::DecKey> dec_key;
+	libcdoc::Recipient enc_key;
+	const libcdoc::Lock *dec_key = nullptr;
 	bool operator== (const CDKey& rhs) const {
 		return (enc_key == rhs.enc_key) && (dec_key == rhs.dec_key);
 	}
@@ -49,10 +51,10 @@ public:
 	~CryptoDoc() final;
 
 	bool supportsSymmetricKeys() const;
-	bool addEncryptionKey(std::shared_ptr<libcdoc::EncKey> key );
+	bool addEncryptionKey(const libcdoc::Recipient& key );
 	bool canDecrypt(const QSslCertificate &cert);
 	void clear(const QString &file = {});
-	bool decrypt(std::shared_ptr<libcdoc::CKey> key, const QByteArray& secret);
+	bool decrypt(const libcdoc::Lock *lock, const QByteArray& secret);
 	bool encrypt(const QString &filename = {}, const QString& label = {}, const QByteArray& secret = {}, uint32_t kdf_iter = 0);
 	DocumentModel* documentModel() const;
 	QString fileName() const;

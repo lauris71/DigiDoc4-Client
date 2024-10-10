@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include <libcdoc/cdoc.h>
+#include <libcdoc/io.h>
 
 class XMLReader
 {

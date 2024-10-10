@@ -18,9 +18,8 @@ struct XMLWriter::Private
 	xmlTextWriterPtr w = nullptr;
 	std::map<std::string, int> nsmap;
 
-	std::ostream *ofs = nullptr;
-	bool close_ofs = false;
-	libcdoc::vectorwrapbuf *vbuf = nullptr;
+	libcdoc::DataConsumer* dst = nullptr;
+	bool dst_owned = false;
 
 	xmlOutputBufferPtr obuf = nullptr;
 
@@ -32,22 +31,34 @@ int
 XMLWriter::Private::xmlOutputWriteCallback (void *context, const char *buffer, int len)
 {
 	XMLWriter *writer = reinterpret_cast<XMLWriter *>(context);
-	writer->d->ofs->write(buffer, len);
-	return (writer->d->ofs->fail()) ? -1 : len;
+	return writer->d->dst->write((uint8_t *) buffer, len);
 }
 
 int
 XMLWriter::Private::xmlOutputCloseCallback (void *context)
 {
 	XMLWriter *writer = reinterpret_cast<XMLWriter *>(context);
-	writer->d->ofs->flush();
-	return (writer->d->ofs->fail()) ? -1 : 0;
+	return writer->d->dst->close();
 }
+
+XMLWriter::XMLWriter(libcdoc::DataConsumer* dst)
+	: d(new Private)
+{
+	d->dst = dst;
+	d->obuf = xmlAllocOutputBuffer(nullptr);
+	d->obuf->context = this;
+	d->obuf->writecallback = Private::xmlOutputWriteCallback;
+	d->obuf->closecallback = Private::xmlOutputCloseCallback;
+	d->w = xmlNewTextWriter(d->obuf);
+	xmlTextWriterStartDocument(d->w, nullptr, "UTF-8", nullptr);
+}
+
 
 XMLWriter::XMLWriter(std::ostream *ofs)
 	: d(new Private)
 {
-	d->ofs = ofs;
+	d->dst = new libcdoc::OStreamConsumer(ofs);
+	d->dst_owned = true;
 	d->obuf = xmlAllocOutputBuffer(nullptr);
 	d->obuf->context = this;
 	d->obuf->writecallback = Private::xmlOutputWriteCallback;
@@ -59,8 +70,8 @@ XMLWriter::XMLWriter(std::ostream *ofs)
 XMLWriter::XMLWriter(const std::string& path)
 	: d(new Private)
 {
-	d->ofs = new std::ofstream(path);;
-	d->close_ofs = true;
+	d->dst = new libcdoc::OStreamConsumer(path);
+	d->dst_owned = true;
 	d->obuf = xmlAllocOutputBuffer(nullptr);
 	d->obuf->context = this;
 	d->obuf->writecallback = Private::xmlOutputWriteCallback;
@@ -72,9 +83,8 @@ XMLWriter::XMLWriter(const std::string& path)
 XMLWriter::XMLWriter(std::vector<uint8_t>& vec)
 	: d(new Private)
 {
-	d->vbuf = new libcdoc::vectorwrapbuf(vec);
-	d->ofs = new std::ostream(d->vbuf);
-	d->close_ofs = true;
+	d->dst = new libcdoc::VectorConsumer(vec);
+	d->dst_owned = true;
 	d->obuf = xmlAllocOutputBuffer(nullptr);
 	d->obuf->context = this;
 	d->obuf->writecallback = Private::xmlOutputWriteCallback;
@@ -86,8 +96,7 @@ XMLWriter::XMLWriter(std::vector<uint8_t>& vec)
 XMLWriter::~XMLWriter()
 {
 	close();
-	if(d->ofs && d->close_ofs) delete d->ofs;
-	if(d->vbuf) delete d->vbuf;
+	if(d->dst && d->dst_owned) delete d->dst;
 	delete d;
 }
 

@@ -265,15 +265,15 @@ ContainerState MainWindow::currentState()
 	return ContainerState::Uninitialized;
 }
 
-void MainWindow::decrypt(std::shared_ptr<libcdoc::CKey> key)
+void MainWindow::decrypt(const libcdoc::Lock *lock)
 {
 	if(!cryptoDoc) return;
 
 	QByteArray secret;
-	if (key && (key->type == libcdoc::CKey::Type::SYMMETRIC_KEY)) {
-		std::shared_ptr<libcdoc::CKeySymmetric> skey = std::static_pointer_cast<libcdoc::CKeySymmetric>(key);
+	if (lock && (lock->type == libcdoc::Lock::Type::SYMMETRIC_KEY)) {
+		const libcdoc::LockSymmetric *skey = (const libcdoc::LockSymmetric *) lock;
 		PasswordDialog p;
-		p.setLabel(QString::fromStdString(key->label));
+		p.setLabel(QString::fromStdString(lock->label));
 		if (skey->kdf_iter > 0) {
 			p.setMode(PasswordDialog::Mode::DECRYPT, PasswordDialog::Type::PASSWORD);
 			if(!p.exec()) return;
@@ -287,7 +287,7 @@ void MainWindow::decrypt(std::shared_ptr<libcdoc::CKey> key)
 
 	WaitDialogHolder waitDialog(this, tr("Decrypting"));
 
-	if (cryptoDoc->decrypt(key, secret)) {
+	if (cryptoDoc->decrypt(lock, secret)) {
 		ui->cryptoContainerPage->transition(cryptoDoc, qApp->signer()->tokenauth().cert());
 		auto *notification = new FadeInNotification(this, WHITE, MANTIS, 110);
 		notification->start( tr("Decryption succeeded!"), 750, 3000, 1200 );
@@ -547,7 +547,7 @@ void MainWindow::convertToCDoc()
 	if(!cardData.cert().isNull()) {
 		QByteArray qder = cardData.cert().toDer();
 		std::vector<uint8_t> sder = std::vector<uint8_t>(qder.cbegin(), qder.cend());
-		cryptoContainer->addEncryptionKey(std::make_shared<libcdoc::EncKeyCert>(CryptoDoc::labelFromCertificate(sder), sder));
+		cryptoContainer->addEncryptionKey(libcdoc::Recipient::makeCertificate(CryptoDoc::labelFromCertificate(sder), sder));
 	}
 
 	resetCryptoDoc(cryptoContainer.release());
@@ -1199,9 +1199,9 @@ void MainWindow::containerSummary()
 }
 
 void
-MainWindow::decryptClicked(std::shared_ptr<libcdoc::CKey> key)
+MainWindow::decryptClicked(const libcdoc::Lock *lock)
 {
 	qDebug() << "Decrypt clicked:";
-	decrypt(key);
+	decrypt(lock);
 }
 

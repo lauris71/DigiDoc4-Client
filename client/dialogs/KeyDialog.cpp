@@ -49,15 +49,14 @@ KeyDialog::KeyDialog(const CDKey &k, QWidget *parent )
 	d->view->setHeaderLabels({tr("Attribute"), tr("Value")});
 
 	connect(d->close, &QPushButton::clicked, this, &KeyDialog::accept);
-	if (k.enc_key && k.enc_key->isCertificate()) {
-		const libcdoc::EncKeyCert& kd = static_cast<const libcdoc::EncKeyCert&>(*k.enc_key);
-		QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(kd.cert.data()), kd.cert.size()), QSsl::Der);
+	if (k.enc_key.isCertificate()) {
+		QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(k.enc_key.cert.data()), k.enc_key.cert.size()), QSsl::Der);
 		connect(d->showCert, &QPushButton::clicked, this, [this, cert=kcert] {
 			CertificateDetails::showCertificate(cert, this);
 		});
 		d->showCert->setHidden(kcert.isNull());
 	} else if (k.dec_key && k.dec_key->isCertificate()) {
-			const libcdoc::CKeyCert& kd = static_cast<const libcdoc::CKeyCert&>(*k.dec_key);
+			const libcdoc::LockCert& kd = static_cast<const libcdoc::LockCert&>(*k.dec_key);
 			QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(kd.cert.data()), kd.cert.size()), QSsl::Der);
 			connect(d->showCert, &QPushButton::clicked, this, [this, cert=kcert] {
 				CertificateDetails::showCertificate(cert, this);
@@ -87,7 +86,7 @@ KeyDialog::KeyDialog(const CDKey &k, QWidget *parent )
 
 	bool adjust_size = false;
 	if (k.dec_key && k.dec_key->isCDoc1()) {
-		const libcdoc::CKeyCDoc1& kd = static_cast<const libcdoc::CKeyCDoc1&>(*k.dec_key);
+		const libcdoc::LockCDoc1& kd = static_cast<const libcdoc::LockCDoc1&>(*k.dec_key);
 		QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(kd.cert.data()), kd.cert.size()), QSsl::Der);
 		addItemStr(tr("Recipient"), kd.label);
 		addItem(tr("Crypto method"), QString::fromStdString(kd.method));
@@ -96,13 +95,13 @@ KeyDialog::KeyDialog(const CDKey &k, QWidget *parent )
 		addItem(tr("Issuer"), SslCertificate(kcert).issuerInfo(QSslCertificate::CommonName));
 		adjust_size = !kd.concatDigest.empty();
 	}
-	if (k.enc_key) {
-		addItemStr(tr("Label"), k.enc_key->label);
+	if (k.enc_key.type != libcdoc::Recipient::Type::NONE) {
+		addItemStr(tr("Label"), k.enc_key.label);
 	} else {
 		addItemStr(tr("Label"), k.dec_key->label);
 	}
-	if (k.dec_key && (k.dec_key->type == libcdoc::CKey::SERVER)) {
-		const libcdoc::CKeyServer& sk = static_cast<const libcdoc::CKeyServer&>(*k.dec_key);
+	if (k.dec_key && (k.dec_key->type == libcdoc::Lock::SERVER)) {
+		const libcdoc::LockServer& sk = static_cast<const libcdoc::LockServer&>(*k.dec_key);
 		addItem(tr("Key server ID"), QString::fromUtf8(sk.keyserver_id.data(), sk.keyserver_id.size()));
 		addItem(tr("Transaction ID"), QString::fromUtf8(sk.transaction_id.data(), sk.transaction_id.size()));
 	}

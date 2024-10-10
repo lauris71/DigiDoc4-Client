@@ -9,6 +9,7 @@
 #include "certificate.h"
 #define __CDOC1WRITER_CPP__
 
+#include "cdoc.h"
 #include "Crypto.h"
 #include "DDOCReader.h"
 #include "Token.h"
@@ -32,11 +33,11 @@ const std::set<std::string> SUPPORTED_KWAES = {
 };
 
 /**
- * @class CDOC1Reader
- * @brief CDOC1Reader is used for decrypt data.
+ * @class CDoc1Reader
+ * @brief CDoc1Reader is used for decrypt data.
  */
 
-class CDOC1Reader::Private
+class CDoc1Reader::Private
 {
 public:
 	struct Key
@@ -53,76 +54,74 @@ public:
 
 	std::string file, mime, method;
 	std::vector<Key> _keys;
-	std::vector<std::shared_ptr<libcdoc::CKey>> keys;
+	std::vector<libcdoc::Lock *> locks;
 	std::vector<File> files;
 	std::map<std::string,std::string> properties;
 };
 
-libcdoc::CKey::DecryptionStatus
-CDOC1Reader::canDecrypt(const libcdoc::Certificate &cert) {
-	if(getDecryptionKey(cert)) {
-		return libcdoc::CKey::DecryptionStatus::CAN_DECRYPT;
-	}
-	return libcdoc::CKey::DecryptionStatus::CANNOT_DECRYPT;
-}
-
-std::shared_ptr<libcdoc::CKey>
-CDOC1Reader::getDecryptionKey(const libcdoc::Certificate &cert)
+const libcdoc::Lock *
+CDoc1Reader::getDecryptionLock(const std::vector<uint8_t>& cert)
 {
 	if (!SUPPORTED_METHODS.contains(d->method)) return {};
-	for(std::shared_ptr<libcdoc::CKey> key: d->keys) {
-		if (key->type != libcdoc::CKey::Type::CDOC1) continue;
-		const libcdoc::CKeyCDoc1 *k = (libcdoc::CKeyCDoc1 *) key.get();
-		if(k->cert != cert.cert || k->encrypted_fmk.empty()) continue;
-		if(cert.getAlgorithm() == libcdoc::Certificate::RSA &&
+	libcdoc::Certificate cc(cert);
+	for(const libcdoc::Lock *lock : d->locks) {
+		if (lock->type != libcdoc::Lock::Type::CDOC1) continue;
+		const libcdoc::LockCDoc1 *k = (libcdoc::LockCDoc1 *) lock;
+		if(k->cert != cc.cert || k->encrypted_fmk.empty()) continue;
+		if(cc.getAlgorithm() == libcdoc::Certificate::RSA &&
 			k->method == libcdoc::Crypto::RSA_MTH)
-			return key;
-		if(cert.getAlgorithm() == libcdoc::Certificate::ECC &&
+			return lock;
+		if(cc.getAlgorithm() == libcdoc::Certificate::ECC &&
 			!k->publicKey.empty() &&
 			SUPPORTED_KWAES.contains(k->method))
-			return key;
+			return lock;
 	}
-	return {};
+	return nullptr;
 }
 
-bool
-CDOC1Reader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::CKey &key)
+int
+CDoc1Reader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock *lock)
 {
-	if (key.type != libcdoc::CKey::Type::CDOC1) {
+	if (lock->type != libcdoc::Lock::Type::CDOC1) {
 		setLastError(t_("Not a CDoc1 key"));
-		return false;
+		return libcdoc::UNSPECIFIED_ERROR;
 	}
-	const libcdoc::CKeyCDoc1& ckey = static_cast<const libcdoc::CKeyCDoc1&>(key);
+	const libcdoc::LockCDoc1& ckey = static_cast<const libcdoc::LockCDoc1&>(*lock);
 	setLastError({});
 	std::vector<uint8_t> decrypted_key;
-	if (ckey.pk_type == libcdoc::CKey::PKType::RSA) {
+	if (ckey.pk_type == libcdoc::Lock::PKType::RSA) {
 		int result = crypto->decryptRSA(decrypted_key, ckey.encrypted_fmk, false);
 		if (result < 0) {
 			setLastError(crypto->getLastErrorStr(result));
-			return false;
+			return libcdoc::CRYPTO_ERROR;
 		}
 	} else {
 		int result = crypto->deriveConcatKDF(decrypted_key, ckey.publicKey, ckey.concatDigest,
 				libcdoc::Crypto::keySize(ckey.method), ckey.AlgorithmID, ckey.PartyUInfo, ckey.PartyVInfo);
 		if (result < 0) {
 			setLastError(crypto->getLastErrorStr(result));
-			return false;
+			return libcdoc::CRYPTO_ERROR;
 		}
 	}
 	if(decrypted_key.empty()) {
 		setLastError(t_("Failed to decrypt/derive key"));
-		return false;
+		return libcdoc::CRYPTO_ERROR;
 	}
-	if(ckey.pk_type == libcdoc::CKey::PKType::RSA) {
+	if(ckey.pk_type == libcdoc::Lock::PKType::RSA) {
 		fmk = decrypted_key;
 	} else {
 		fmk = libcdoc::Crypto::AESWrap(decrypted_key, ckey.encrypted_fmk, false);
 	}
-	return !fmk.empty();
+	if (fmk.empty()) {
+		setLastError(t_("Failed to decrypt/derive fmk"));
+		return libcdoc::CRYPTO_ERROR;
+	}
+	setLastError({});
+	return libcdoc::OK;
 }
 
-bool
-CDOC1Reader::decryptPayload(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer *dst)
+int
+CDoc1Reader::decryptPayload(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer *dst)
 {
 	std::vector<uint8_t> data = this->decryptData(fmk);
 	std::string mime = d->mime;
@@ -138,27 +137,32 @@ CDOC1Reader::decryptPayload(const std::vector<uint8_t>& fmk, libcdoc::MultiDataC
 	libcdoc::VectorSource vsrc(data);
 	if(mime == MIME_DDOC || mime == MIME_DDOC_OLD) {
 		std::cerr << "Contains DDoc content" << mime;
-		DDOCReader::parse(&vsrc, dst);
-		return true;
+		if (!DDOCReader::parse(&vsrc, dst)) {
+			setLastError(t_("Failed to parse DDOC file"));
+			return libcdoc::UNSPECIFIED_ERROR;
+		}
+		setLastError({});
+		return libcdoc::OK;
 	}
 	dst->open(d->properties["Filename"], data.size());
 	dst->writeAll(vsrc);
 	dst->close();
-	return true;
+	setLastError({});
+	return libcdoc::OK;
 }
 
-const std::vector<std::shared_ptr<libcdoc::CKey>>&
-CDOC1Reader::getKeys()
+const std::vector<libcdoc::Lock *>&
+CDoc1Reader::getLocks()
 {
-	return d->keys;
+	return d->locks;
 }
 
 /**
- * CDOC1Reader constructor.
+ * CDoc1Reader constructor.
  * @param file File to open reading
  */
-CDOC1Reader::CDOC1Reader(const std::string &file)
-	: CDocReader(), d(new Private)
+CDoc1Reader::CDoc1Reader(const std::string &file)
+	: CDocReader(1), d(new Private)
 {
 	d->file = file;
 	auto hex2bin = [](const std::string &in) {
@@ -209,7 +213,7 @@ CDOC1Reader::CDOC1Reader(const std::string &file)
 		// EncryptedData/KeyInfo/EncryptedKey
 		else if(reader.isElement("EncryptedKey"))
 		{
-			std::shared_ptr<libcdoc::CKeyCDoc1> key = std::make_shared<libcdoc::CKeyCDoc1>();
+			libcdoc::LockCDoc1 *key =new libcdoc::LockCDoc1();
 			//key.id = reader.attribute("Id");
 			key->label = reader.attribute("Recipient");
 			while(reader.read())
@@ -250,12 +254,12 @@ CDOC1Reader::CDOC1Reader(const std::string &file)
 				else if(reader.isElement("CipherValue"))
 					key->encrypted_fmk = reader.readBase64();
 			}
-			d->keys.push_back(key);
+			d->locks.push_back(key);
 		}
 	}
 }
 
-CDOC1Reader::~CDOC1Reader()
+CDoc1Reader::~CDoc1Reader()
 {
 	delete d;
 }
@@ -263,7 +267,7 @@ CDOC1Reader::~CDOC1Reader()
 /**
  * Returns decrypted mime type
  */
-std::string CDOC1Reader::mimeType() const
+std::string CDoc1Reader::mimeType() const
 {
 	return d->mime;
 }
@@ -271,7 +275,7 @@ std::string CDOC1Reader::mimeType() const
 /**
  * Returns decrypted filename
  */
-std::string CDOC1Reader::fileName() const
+std::string CDoc1Reader::fileName() const
 {
 	return d->properties["Filename"];
 }
@@ -280,7 +284,7 @@ std::string CDOC1Reader::fileName() const
  * Returns decrypted data
  * @param key Transport key to used for decrypt data
  */
-std::vector<uchar> CDOC1Reader::decryptData(const std::vector<uchar> &key)
+std::vector<uchar> CDoc1Reader::decryptData(const std::vector<uchar> &key)
 {
 	XMLReader reader(d->file);
 	std::vector<uchar> data;
@@ -305,12 +309,12 @@ std::vector<uchar> CDOC1Reader::decryptData(const std::vector<uchar> &key)
  * Returns decrypted data
  * @param token Token to be used for decrypting data
  */
-std::vector<uchar> CDOC1Reader::decryptData(Token *token)
+std::vector<uchar> CDoc1Reader::decryptData(Token *token)
 {
 	const std::vector<uchar> &cert = token->cert();
-	for(std::shared_ptr<libcdoc::CKey> &ck: d->keys)
+	for(const libcdoc::Lock *ck: d->locks)
 	{
-		libcdoc::CKeyCDoc1 *k = (libcdoc::CKeyCDoc1 *) ck.get();
+		libcdoc::LockCDoc1 *k = (libcdoc::LockCDoc1 *) ck;
 		if (k->cert != cert)
 			continue;
 

@@ -1,6 +1,5 @@
+#include "cdoc.h"
 #define __CDOC1WRITER_CPP__
-
-#include <fstream>
 
 #include "Crypto.h"
 #include "DDOCWriter.h"
@@ -14,11 +13,11 @@
 #define SCOPE(TYPE, VAR, DATA) std::unique_ptr<TYPE,decltype(&TYPE##_free)> VAR(DATA, TYPE##_free)
 
 /**
- * @class CDOC1Writer
- * @brief CDOC1Writer is used for encrypt data.
+ * @class CDoc1Writer
+ * @brief CDoc1Writer is used for encrypt data.
  */
 
-class CDOC1Writer::Private
+class CDoc1Writer::Private
 {
 public:
 	static const XMLWriter::NS DENC, DS, XENC11, DSIG11;
@@ -26,27 +25,27 @@ public:
 	bool writeRecipient(XMLWriter *xmlw, const std::vector<uchar> &recipient, libcdoc::Crypto::Key transportKey);
 };
 
-const XMLWriter::NS CDOC1Writer::Private::DENC{ "denc", "http://www.w3.org/2001/04/xmlenc#" };
-const XMLWriter::NS CDOC1Writer::Private::DS{ "ds", "http://www.w3.org/2000/09/xmldsig#" };
-const XMLWriter::NS CDOC1Writer::Private::XENC11{ "xenc11", "http://www.w3.org/2009/xmlenc11#" };
-const XMLWriter::NS CDOC1Writer::Private::DSIG11{ "dsig11", "http://www.w3.org/2009/xmldsig11#" };
+const XMLWriter::NS CDoc1Writer::Private::DENC{ "denc", "http://www.w3.org/2001/04/xmlenc#" };
+const XMLWriter::NS CDoc1Writer::Private::DS{ "ds", "http://www.w3.org/2000/09/xmldsig#" };
+const XMLWriter::NS CDoc1Writer::Private::XENC11{ "xenc11", "http://www.w3.org/2009/xmlenc11#" };
+const XMLWriter::NS CDoc1Writer::Private::DSIG11{ "dsig11", "http://www.w3.org/2009/xmldsig11#" };
 
 /**
- * CDOC1Writer constructor.
+ * CDoc1Writer constructor.
  * @param method Encrypton method to be used
  */
-CDOC1Writer::CDOC1Writer(const std::string &method)
-	: CDocWriter(), d(new Private())
+CDoc1Writer::CDoc1Writer(const std::string &method)
+	: CDocWriter(1), d(new Private())
 {
 	d->method = method;
 }
 
-CDOC1Writer::~CDOC1Writer()
+CDoc1Writer::~CDoc1Writer()
 {
 	delete d;
 }
 
-bool CDOC1Writer::Private::writeRecipient(XMLWriter *xmlw, const std::vector<uchar> &recipient, libcdoc::Crypto::Key transportKey)
+bool CDoc1Writer::Private::writeRecipient(XMLWriter *xmlw, const std::vector<uchar> &recipient, libcdoc::Crypto::Key transportKey)
 {
 	SCOPE(X509, peerCert, libcdoc::Crypto::toX509(recipient));
 	if(!peerCert)
@@ -170,22 +169,22 @@ struct FileEntry {
 /**
  * Encrypt data
  */
-bool CDOC1Writer::encrypt(std::ostream& ofs, libcdoc::MultiDataSource& src, const std::vector<std::shared_ptr<libcdoc::EncKey>>& keys)
+int
+CDoc1Writer::encrypt(libcdoc::DataConsumer& dst, libcdoc::MultiDataSource& src, const std::vector<libcdoc::Recipient>& keys)
 {
 	libcdoc::Crypto::Key transportKey = libcdoc::Crypto::generateKey(d->method);
-	XMLWriter *xmlw = new XMLWriter(&ofs);
+	XMLWriter *xmlw = new XMLWriter(&dst);
 	xmlw->writeStartElement(Private::DENC, "EncryptedData", {{"MimeType", src.getNumComponents() > 1 ? "http://www.sk.ee/DigiDoc/v1.3.0/digidoc.xsd" : "application/octet-stream"}});
 	xmlw->writeElement(Private::DENC, "EncryptionMethod", {{"Algorithm", d->method}});
 	xmlw->writeStartElement(Private::DS, "KeyInfo", {});
-	for (const std::shared_ptr<libcdoc::EncKey>& key : keys) {
-		if (!key->isCertificate()) {
-			d->lastError = "Invalid key type";
-			return false;
+	for (const libcdoc::Recipient& key : keys) {
+		if (!key.isCertificate()) {
+			d->lastError = "Invalid recipient type";
+			return libcdoc::UNSPECIFIED_ERROR;
 		}
-		const std::shared_ptr<libcdoc::EncKeyCert> ckey = std::static_pointer_cast<libcdoc::EncKeyCert>(key);
-		if(!d->writeRecipient(xmlw, ckey->cert, transportKey)) {
+		if(!d->writeRecipient(xmlw, key.cert, transportKey)) {
 			d->lastError = "Failed to write Recipient info";
-			return false;
+			return libcdoc::IO_ERROR;
 		}
 	}
 	xmlw->writeEndElement(Private::DS); // KeyInfo
@@ -235,5 +234,35 @@ bool CDOC1Writer::encrypt(std::ostream& ofs, libcdoc::MultiDataSource& src, cons
 	});
 	xmlw->writeEndElement(Private::DENC); // EncryptedData
 	xmlw->close();
-	return true;
+	return libcdoc::OK;
+}
+
+int
+CDoc1Writer::beginEncryption(libcdoc::DataConsumer& dst)
+{
+	return libcdoc::NOT_IMPLEMENTED;
+}
+
+int
+CDoc1Writer::addRecipient(const libcdoc::Recipient& rcpt)
+{
+	return libcdoc::NOT_IMPLEMENTED;
+}
+
+int
+CDoc1Writer::addFile(const std::string& name, size_t size)
+{
+	return libcdoc::NOT_IMPLEMENTED;
+}
+
+int
+CDoc1Writer::writeData(const uint8_t *src, size_t size)
+{
+	return libcdoc::NOT_IMPLEMENTED;
+}
+
+int
+CDoc1Writer::finishEncryption(bool close_dst)
+{
+	return libcdoc::NOT_IMPLEMENTED;
 }

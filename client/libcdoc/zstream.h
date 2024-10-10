@@ -20,7 +20,6 @@ struct CipherConsumer : public ChainedConsumer {
 	CipherConsumer(DataConsumer *dst, bool take_ownership, libcdoc::Crypto::Cipher *cipher)
 		: ChainedConsumer(dst, take_ownership), _cipher(cipher), _block_size(cipher->blockSize()) {}
 	~CipherConsumer() {
-		if (_owned) delete _dst;
 	}
 
 	int64_t write(const uint8_t *src, size_t size) override final {
@@ -89,7 +88,6 @@ struct ZConsumer : public ChainedConsumer {
 	}
 	~ZConsumer() {
 		if (!_fail) deflateEnd(&_s);
-		if (_owned) delete _dst;
 	}
 
 	int64_t write(const uint8_t *src, size_t size) override final {

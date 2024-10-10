@@ -74,7 +74,7 @@ private:
 	void convertToBDoc();
 	void convertToCDoc();
 	ria::qdigidoc4::ContainerState currentState();
-	void decrypt(std::shared_ptr<libcdoc::CKey> key);
+	void decrypt(const libcdoc::Lock *lock);
 	bool encrypt(bool askForKey = false);
 	void loadPicture();
 	void moveCryptoContainer();
@@ -123,5 +123,5 @@ private:
 	Ui::MainWindow *ui;
 	WarningList *warnings;
 
-	void decryptClicked(std::shared_ptr<libcdoc::CKey> key);
+	void decryptClicked(const libcdoc::Lock *lock);
 };

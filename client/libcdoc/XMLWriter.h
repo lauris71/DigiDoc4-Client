@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+#include "io.h"
+
 class XMLWriter
 {
 public:
@@ -13,6 +15,7 @@ public:
 	XMLWriter(std::ostream *ofs);
 	XMLWriter(const std::string& path);
 	XMLWriter(std::vector<uint8_t>& vec);
+	XMLWriter(libcdoc::DataConsumer *dst);
 	virtual ~XMLWriter();
 
 	virtual void close();

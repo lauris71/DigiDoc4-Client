@@ -74,15 +74,16 @@ DDCryptoBackend::deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<ui
 	return (dst.empty()) ? OPENSSL_ERROR : OK;
 }
 
-std::vector<uint8_t>
-DDCryptoBackend::deriveHMACExtract(const std::vector<uint8_t> &key_material, const std::vector<uint8_t> &salt, int keySize) const
+int
+DDCryptoBackend::deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &key_material, const std::vector<uint8_t> &salt, int keySize)
 {
 	QByteArray qkey_material(reinterpret_cast<const char *>(key_material.data()), key_material.size());
 	QByteArray qsalt(reinterpret_cast<const char *>(salt.data()), salt.size());
 	QByteArray qkekpm = qApp->signer()->decrypt([&qkey_material, &qsalt, &keySize](QCryptoBackend *backend) {
 		return backend->deriveHMACExtract(qkey_material, qsalt, keySize);
 	});
-	return std::vector<uint8_t>(qkekpm.cbegin(), qkekpm.cend());
+	dst = std::vector<uint8_t>(qkekpm.cbegin(), qkekpm.cend());
+	return (dst.empty()) ? OPENSSL_ERROR : OK;
 }
 
 int
@@ -133,21 +134,29 @@ DDConfiguration::getValue(const std::string& param)
 	return {};
 }
 
-std::pair<std::string,std::string>
-DDNetworkBackend::sendKey (libcdoc::CDocWriter *writer, const std::vector<uint8_t> &recipient_id, const std::vector<uint8_t> &key_material, const std::string &type)
+std::string
+DDNetworkBackend::getLastErrorStr(int code) const
+{
+	if (code == BACKEND_ERROR) return last_error;
+	return libcdoc::NetworkBackend::getLastErrorStr(code);
+}
+
+int
+DDNetworkBackend::sendKey (std::pair<std::string,std::string>& result, const std::vector<uint8_t> &recipient_id, const std::vector<uint8_t> &key_material, const std::string &type)
 {
 	std::string keyserver_id = Settings::CDOC2_DEFAULT_KEYSERVER;
 	if(keyserver_id.empty()) {
-		writer->setLastError(t_("keyserver_id cannot be empty"));
-		return {};
+		last_error = "keyserver_id cannot be empty";
+		return BACKEND_ERROR;
 	}
 	QNetworkRequest req = request(QString::fromStdString(keyserver_id));
 	if(req.url().isEmpty()) {
-		writer->setLastError(t_("No valid config found for keyserver_id: ") + keyserver_id);
-		return {};
+		last_error = "No valid config found for keyserver_id: " + keyserver_id;
+		return BACKEND_ERROR;
 	}
 	if(!checkConnection()) {
-		return {};
+		last_error = "No connection";
+		return BACKEND_ERROR;
 	}
 	QScopedPointer<QNetworkAccessManager,QScopedPointerDeleteLater> nam(CheckConnection::setupNAM(req, Settings::CDOC2_POST_CERT));
 	QEventLoop e;
@@ -163,24 +172,29 @@ DDNetworkBackend::sendKey (libcdoc::CDocWriter *writer, const std::vector<uint8_
 		reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 201) {
 		transaction_id = QString::fromLatin1(reply->rawHeader("Location")).remove(QLatin1String("/key-capsules/"));
 	} else {
-		writer->setLastError(reply->errorString().toStdString());
-		return {};
+		last_error = reply->errorString().toStdString();
+		return BACKEND_ERROR;
 	}
-	if(transaction_id.isEmpty())
-		writer->setLastError(t_("Failed to post key capsule"));
-	return {keyserver_id, transaction_id.toStdString()};
+	if(transaction_id.isEmpty()) {
+		last_error = "Failed to post key capsule";
+		return BACKEND_ERROR;
+	}
+	result.first = keyserver_id;
+	result.second = transaction_id.toStdString();
+	return OK;
 };
 
-std::vector<uint8_t>
-DDNetworkBackend::fetchKey(libcdoc::CDocReader *reader, const libcdoc::CKeyServer& key)
+int
+DDNetworkBackend::fetchKey(std::vector<uint8_t>& result, const std::string& keyserver_id, const std::string& transaction_id)
 {
-	QNetworkRequest req = request(QString::fromStdString(key.keyserver_id), QString::fromStdString(key.transaction_id));
+	QNetworkRequest req = request(QString::fromStdString(keyserver_id), QString::fromStdString(transaction_id));
 	if(req.url().isEmpty()) {
-		reader->setLastError(t_("No valid config found for keyserver_id:") + key.keyserver_id);
-		return {};
+		last_error = "No valid config found for keyserver_id:" + keyserver_id;
+		return BACKEND_ERROR;
 	}
 	if(!checkConnection()) {
-		return {};
+		last_error = "No connection";
+		return BACKEND_ERROR;
 	}
 	auto authKey = dispatchToMain(&QSigner::key, qApp->signer());
 	QScopedPointer<QNetworkAccessManager,QScopedPointerDeleteLater> nam(
@@ -193,12 +207,13 @@ DDNetworkBackend::fetchKey(libcdoc::CDocReader *reader, const libcdoc::CKeyServe
 		qApp->signer()->logout();
 	}
 	if(reply->error() != QNetworkReply::NoError && reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() != 201) {
-		reader->setLastError(reply->errorString().toStdString());
-		return {};
+		last_error = reply->errorString().toStdString();
+		return BACKEND_ERROR;
 	}
 	QJsonObject json = QJsonDocument::fromJson(reply->readAll()).object();
 	QByteArray key_material = QByteArray::fromBase64(json.value(QLatin1String("ephemeral_key_material")).toString().toLatin1());
-	return std::vector<uint8_t>(key_material.cbegin(), key_material.cend());
+	result.assign(key_material.cbegin(), key_material.cend());
+	return OK;
 }
 
 TempListConsumer::~TempListConsumer()
@@ -237,7 +252,7 @@ TempListConsumer::isError()
 	return !file.data->isWritable();
 }
 
-bool
+int
 TempListConsumer::open(const std::string& name, int64_t size)
 {
 	IOEntry io({name, "application/octet-stream", 0, {}});
@@ -248,7 +263,7 @@ TempListConsumer::open(const std::string& name, int64_t size)
 	}
 	io.data->open(QIODevice::ReadWrite);
 	files.push_back(std::move(io));
-	return true;
+	return OK;
 }
 
 StreamListSource::StreamListSource(const std::vector<IOEntry>& files) : _files(files), _current(-1)
@@ -288,6 +303,7 @@ StreamListSource::next(std::string& name, int64_t& size)
 {
 	++_current;
 	if (_current >= _files.size()) return false;
+	_files[_current].data->seek(0);
 	name = _files[_current].name;
 	size = _files[_current].size;
 	return true;

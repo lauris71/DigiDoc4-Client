@@ -64,7 +64,7 @@ public:
 	static std::vector<uint8_t> toPublicKeyDer(EVP_PKEY *key);
 
 	static std::vector<uint8_t> random(uint32_t len = 32);
-	static std::vector<uint8_t> xor_data(const std::vector<uint8_t> &a, const std::vector<uint8_t> &b);
+	static int xor_data(std::vector<uint8_t>& dst, const std::vector<uint8_t> &lhs, const std::vector<uint8_t> &rhs);
 	static std::string toBase64(const uchar *data, size_t len);
 
 	template <typename F>

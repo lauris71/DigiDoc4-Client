@@ -9,6 +9,8 @@
 #include <cmath>
 #include <cstring>
 
+#include "cdoc.h"
+
 #define SCOPE(TYPE, VAR, DATA) std::unique_ptr<TYPE,decltype(&TYPE##_free)> VAR(DATA, TYPE##_free)
 
 namespace libcdoc {
@@ -453,15 +455,13 @@ Crypto::random(uint32_t len)
 	return out;
 }
 
-std::vector<uint8_t>
-Crypto::xor_data(const std::vector<uint8_t> &a, const std::vector<uint8_t> &b)
+int
+Crypto::xor_data(std::vector<uint8_t>& dst, const std::vector<uint8_t> &lhs, const std::vector<uint8_t> &rhs)
 {
-	if(a.size() != b.size())
-		return {};
-	std::vector<uint8_t> result(a.size());
-	for(size_t i = 0; i < a.size(); ++i)
-		result[i] = a[i] ^ b[i];
-	return result;
+	if(lhs.size() != rhs.size()) return CRYPTO_ERROR;
+	dst.resize(lhs.size());
+	for(size_t i = 0; i < lhs.size(); ++i) dst[i] = lhs[i] ^ rhs[i];
+	return OK;
 }
 
 std::string Crypto::toBase64(const uchar *data, size_t len)

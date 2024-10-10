@@ -65,7 +65,7 @@ signals:
 	void removed(int row);
 	void warning(const WarningText &warningText);
 
-	void decryptReq(std::shared_ptr<libcdoc::CKey> key);
+	void decryptReq(const libcdoc::Lock *key);
 
 private:
 	void addressSearch();

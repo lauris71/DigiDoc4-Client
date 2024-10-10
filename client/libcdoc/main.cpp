@@ -137,12 +137,14 @@ struct ToolCrypto : public libcdoc::CryptoBackend {
 	int decryptRSA(std::vector<uint8_t>& result, const std::vector<uint8_t> &data, bool oaep) const override final { return {}; }
 	int deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::string &digest, int keySize,
 		const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo) override final { return {}; }
-	std::vector<uint8_t> deriveHMACExtract(const std::vector<uint8_t> &publicKey, const std::vector<uint8_t> &salt, int keySize) const override final { return {}; }
+	int deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::vector<uint8_t> &salt, int keySize) override final { return {}; }
 	int getSecret(std::vector<uint8_t>& secret, const std::string& label) override final {
 		secret =_secrets.at(label);
 		return (secret.empty()) ? INVALID_PARAMS : OK;
 	}
 };
+
+#define PUSH true
 
 int
 encrypt(int argc, char *argv[])
@@ -165,42 +167,64 @@ encrypt(int argc, char *argv[])
 				print_usage(std::cerr, 1);
 			}
 			i += 1;
-		} else if (!strcmp(argv[i], "--file") && ((i + 1) <= argc)) {
-			files.push_back(argv[i + 1]);
-			i += 1;
 		} else if (!strcmp(argv[i], "--out") && ((i + 1) <= argc)) {
 			out = argv[i + 1];
 			i += 1;
 		} else {
-			print_usage(std::cerr, 1);
+			files.push_back(argv[i]);
 		}
 	}
 	if (rcpts.empty() || files.empty() || out.empty()) print_usage(std::cerr, 1);
-	std::vector<std::shared_ptr<libcdoc::EncKey>> keys;
+	std::vector<libcdoc::Recipient> keys;
 	std::map<std::string,std::vector<uint8_t>> secrets;
 	for (const Recipient& r : rcpts) {
-		libcdoc::EncKey *key = nullptr;
+		libcdoc::Recipient key;
 		if (r.type == Recipient::Type::CERT) {
-			key = new libcdoc::EncKeyCert(r.label, r.data);
+			key = libcdoc::Recipient::makeCertificate(r.label, r.data);
 			secrets[r.label] = {};
 		} else if (r.type == Recipient::Type::KEY) {
-			key = new libcdoc::EncKeySymmetric(0);
-			key->label = r.label;
+			key = libcdoc::Recipient::makeSymmetric(r.label, 0);
 			secrets[r.label] = r.data;
 		} else if (r.type == Recipient::Type::PASSWORD) {
-			key = new libcdoc::EncKeySymmetric(65535);
-			key->label = r.label;
+			key = libcdoc::Recipient::makeSymmetric(r.label, 65535);
 			secrets[r.label] = r.data;
 		}
-		keys.push_back(std::shared_ptr<libcdoc::EncKey>(key));
+		keys.push_back(key);
 	}
 	ToolConf conf;
 	ToolCrypto crypto(secrets);
-	libcdoc::CDocWriter *writer = libcdoc::CDocWriter::createWriter(2, out, &conf, &crypto, nullptr);
+	libcdoc::CDocWriter *writer = libcdoc::CDocWriter::createWriter(2, &conf, &crypto, nullptr);
 
-	std::ofstream ofs(out);
-	libcdoc::FileListSource src({}, files);
-	writer->encrypt(ofs, src, keys);
+	libcdoc::OStreamConsumer ofs(out);
+	if (PUSH) {
+		writer->beginEncryption(ofs);
+		for (const libcdoc::Recipient& rcpt : keys) {
+			writer->addRecipient(rcpt);
+		}
+		for (const std::string& file : files) {
+			std::filesystem::path path(file);
+			if (!std::filesystem::exists(path)) {
+				std::cerr << "File does not exist: " << file;
+				return 1;
+			}
+			size_t size = std::filesystem::file_size(path);
+			writer->addFile(file, size);
+			libcdoc::IStreamSource src(file);
+			while (!src.isEof()) {
+				uint8_t b[256];
+				int64_t len = src.read(b, 256);
+				if (len < 0) {
+					std::cerr << "IO error: " << file;
+					return 1;
+				}
+				writer->writeData(b, len);
+			}
+		}
+		writer->finishEncryption(true);
+	} else {
+		libcdoc::FileListSource src({}, files);
+		writer->encrypt(ofs, src, keys);
+	}
 
 	return 0;
 }
@@ -212,9 +236,7 @@ main(int argc, char *argv[])
 	std::cerr << "Command: " << argv[1] << std::endl;
 	if (!strcmp(argv[1], "encrypt")) {
 		return encrypt(argc - 2, argv + 2);
-	}
-	if(argc >= 5 && strcmp(argv[1], "encrypt") == 0)
-	{
+	} else if(argc >= 5 && strcmp(argv[1], "encrypt") == 0) {
 #if 0
 		CDOC1Writer w(toUTF8(argv[argc-1]));
 		for(int i = 2; i < argc - 1; ++i)
@@ -248,7 +270,7 @@ main(int argc, char *argv[])
 		else if (strcmp(argv[2], "win") == 0)
 			token.reset(new WinToken(strcmp(argv[3], "ui") == 0, argv[4]));
 #endif
-		CDOC1Reader r(toUTF8(argv[5]));
+		CDoc1Reader r(toUTF8(argv[5]));
 		if(r.mimeType() == "http://www.sk.ee/DigiDoc/v1.3.0/digidoc.xsd")
 		{
 			for(const DDOCReader::File &file: DDOCReader::files(r.decryptData(token.get())))

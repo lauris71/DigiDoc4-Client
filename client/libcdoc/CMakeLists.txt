@@ -69,7 +69,17 @@ add_library(cdoc STATIC
     CDOC1Reader.cpp CDOC1Reader.h
     cdoc2.cpp cdoc2.h
     io.cpp io.h
-    keys.cpp keys.h
+
+    Configuration.h
+    CryptoBackend.h
+    NetworkBackend.h
+    CDocReader.h
+    CDocWriter.h
+    Recipient.h
+    Lock.h
+    CryptoBackend.cpp
+    Recipient.cpp
+    Lock.cpp
 )
 
 set_target_properties(cdoc PROPERTIES

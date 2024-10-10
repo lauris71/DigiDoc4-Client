@@ -25,7 +25,10 @@
 
 #include <QtCore/QObject>
 
-#include <libcdoc/cdoc.h>
+#include <libcdoc/Configuration.h>
+#include <libcdoc/CryptoBackend.h>
+#include <libcdoc/NetworkBackend.h>
+#include <libcdoc/io.h>
 
 struct DDConfiguration : public libcdoc::Configuration {
 	std::string getValue(const std::string& param) final;
@@ -37,7 +40,7 @@ struct DDCryptoBackend : public libcdoc::CryptoBackend {
 	int decryptRSA(std::vector<uint8_t>& result, const std::vector<uint8_t> &data, bool oaep) const final;
 	int deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::string &digest, int keySize,
 		const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo) final;
-	std::vector<uint8_t> deriveHMACExtract(const std::vector<uint8_t> &publicKey, const std::vector<uint8_t> &salt, int keySize) const final;
+	int deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::vector<uint8_t> &salt, int keySize) final;
 	int getSecret(std::vector<uint8_t>& secret, const std::string& label) final;
 
 	std::vector<uint8_t> secret;
@@ -46,10 +49,15 @@ struct DDCryptoBackend : public libcdoc::CryptoBackend {
 };
 
 struct DDNetworkBackend : public libcdoc::NetworkBackend, private QObject {
-	std::pair<std::string,std::string> sendKey(libcdoc::CDocWriter *writer, const std::vector<uint8_t> &recipient_id, const std::vector<uint8_t> &key_material, const std::string &type) final;
-	std::vector<uint8_t> fetchKey(libcdoc::CDocReader *reader, const libcdoc::CKeyServer& key);
+	static constexpr int BACKEND_ERROR = -303;
+
+	std::string getLastErrorStr(int code) const final;
+	int sendKey(std::pair<std::string,std::string>& result, const std::vector<uint8_t> &recipient_id, const std::vector<uint8_t> &key_material, const std::string &type) final;
+	int fetchKey(std::vector<uint8_t>& result, const std::string& keyserver_id, const std::string& transaction_id);
 
 	explicit DDNetworkBackend() = default;
+
+	std::string last_error;
 };
 
 struct IOEntry
@@ -70,7 +78,7 @@ struct TempListConsumer : public libcdoc::MultiDataConsumer {
 	int64_t write(const uint8_t *src, size_t size) override final;
 	int close() override final;
 	bool isError() override final;
-	bool open(const std::string& name, int64_t size) override final;
+	int open(const std::string& name, int64_t size) override final;
 private:
 	//std::ostream *ofs = nullptr;
 

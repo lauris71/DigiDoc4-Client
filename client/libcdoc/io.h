@@ -36,7 +36,7 @@ struct DataSource {
 	static constexpr int INPUT_STREAM_ERROR = -601;
 
 	virtual ~DataSource() = default;
-	virtual bool seek(size_t pos) { return false; }
+	virtual int seek(size_t pos) { return INPUT_STREAM_ERROR; }
 	virtual int64_t read(uint8_t *dst, size_t size) = 0;
 	virtual bool isError() = 0;
 	virtual bool isEof() = 0;
@@ -48,10 +48,11 @@ struct DataSource {
 	}
 };
 
+// close finishes the whole stream, individual sub-streams are finished by next open, the last one with close
 struct MultiDataConsumer : public DataConsumer {
 	virtual ~MultiDataConsumer() = default;
 	// Negative value means unknown size
-	virtual bool open(const std::string& name, int64_t size) = 0;
+	virtual int open(const std::string& name, int64_t size) = 0;
 };
 
 struct MultiDataSource : public DataSource {
@@ -106,9 +107,9 @@ struct IStreamSource : public DataSource {
 		if (_owned) delete _ifs;
 	}
 
-	bool seek(size_t pos) {
+	int seek(size_t pos) {
 		_ifs->seekg(pos);
-		return _ifs;
+		return bool(_ifs) ? OK : INPUT_STREAM_ERROR;
 	}
 
 	int64_t read(uint8_t *dst, size_t size) {
@@ -150,10 +151,10 @@ struct VectorSource : public DataSource {
 
 	VectorSource(const std::vector<uint8_t>& data) : _data(data), _ptr(0) {}
 
-	bool seek(size_t pos) {
-		if (pos > _data.size()) return false;
+	int seek(size_t pos) {
+		if (pos > _data.size()) return INPUT_STREAM_ERROR;
 		_ptr = pos;
-		return true;
+		return OK;
 	}
 
 	int64_t read(uint8_t *dst, size_t size) {
@@ -195,10 +196,11 @@ struct FileListConsumer : public MultiDataConsumer {
 	bool isError() override final {
 		return !ofs;
 	}
-	bool open(const std::string& name, int64_t size) override final {
+	int open(const std::string& name, int64_t size) override final {
 		std::filesystem::path path = base.append(name);
 		ofs.open(path.string(), std::ios_base::out);
-		return bool(ofs);
+		if (!ofs) return OUTPUT_STREAM_ERROR;
+		return OK;
 	}
 };
 

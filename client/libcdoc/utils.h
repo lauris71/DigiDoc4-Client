@@ -82,12 +82,10 @@ struct TaggedSource : public libcdoc::DataSource {
 		if (_owned) delete(_src);
 	}
 
-	bool seek(size_t pos) override final {
-		if (_src->seek(pos)) {
-			_src->read(tag.data(), tag.size());
-			return true;
-		}
-		return false;
+	int seek(size_t pos) override final {
+		if (!_src->seek(pos)) return INPUT_STREAM_ERROR;
+		if (_src->read(tag.data(), tag.size()) != tag.size()) return INPUT_STREAM_ERROR;
+		return OK;
 	}
 
 	int64_t read(uint8_t *dst, size_t size) override final {

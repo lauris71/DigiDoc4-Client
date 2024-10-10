@@ -3,22 +3,26 @@
 #include <string>
 #include <vector>
 
-#include "cdoc.h"
-#include "CDOCExport.h"
+#include "CDocWriter.h"
 
-class CDOC_EXPORT CDOC1Writer : public libcdoc::CDocWriter
+class CDoc1Writer : public libcdoc::CDocWriter
 {
 public:
-	CDOC1Writer(const std::string &method = "http://www.w3.org/2009/xmlenc11#aes256-gcm");
-	~CDOC1Writer();
+	CDoc1Writer(const std::string &method = "http://www.w3.org/2009/xmlenc11#aes256-gcm");
+	~CDoc1Writer();
 
 	std::string last_error;
 
-	uint32_t getVersion() final { return 1; }
-	bool encrypt(std::ostream& ofs, libcdoc::MultiDataSource& src, const std::vector<std::shared_ptr<libcdoc::EncKey>>& keys) final;
+	int beginEncryption(libcdoc::DataConsumer& dst) override final;
+	int addRecipient(const libcdoc::Recipient& rcpt) override final;
+	int addFile(const std::string& name, size_t size) override final;
+	int writeData(const uint8_t *src, size_t size) override final;
+	int finishEncryption(bool close_dst) override final;
+
+	int encrypt(libcdoc::DataConsumer& dst, libcdoc::MultiDataSource& src, const std::vector<libcdoc::Recipient>& keys) final;
 private:
-	CDOC1Writer(const CDOC1Writer &) = delete;
-	CDOC1Writer &operator=(const CDOC1Writer &) = delete;
+	CDoc1Writer(const CDoc1Writer &) = delete;
+	CDoc1Writer &operator=(const CDoc1Writer &) = delete;
 	class Private;
 	Private *d;
 };

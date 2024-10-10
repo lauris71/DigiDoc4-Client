@@ -30,9 +30,9 @@ struct FileListConsumer : public libcdoc::MultiDataConsumer {
 	}
 	int close() override final { return OK; }
 	bool isError() override final { return false; }
-	bool open(const std::string& name, int64_t size) override final {
+	int open(const std::string& name, int64_t size) override final {
 		files.push_back({name, "application/octet-stream", {}});
-		return true;
+		return OK;
 	}
 };
 

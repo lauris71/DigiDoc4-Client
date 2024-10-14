@@ -1,12 +1,9 @@
 #ifndef TAR_H
 #define TAR_H
 
-#include <array>
 #include <cstring>
-#include <vector>
 #include <string>
 
-#include <sstream>
 #include <cstdio>
 
 #include <libcdoc/zstream.h>
@@ -19,20 +16,6 @@ struct TAR {
 
 	static bool files(libcdoc::DataSource *src, bool &warning, libcdoc::MultiDataConsumer *dst);
 	static bool save(libcdoc::DataConsumer& dst, libcdoc::MultiDataSource& src);
-
-	static std::vector<std::string> split (const std::string &s, char delim) {
-		std::vector<std::string> result;
-		std::stringstream ss (s);
-		std::string item;
-
-		while (getline (ss, item, delim)) {
-			result.push_back (item);
-		}
-
-		return result;
-	}
-
-private:
 };
 
 struct TarConsumer : public MultiDataConsumer
@@ -50,6 +33,25 @@ private:
 	bool _owned;
 	int64_t _current_size;
 	int64_t _current_written;
+};
+
+struct TarSource : public MultiDataSource
+{
+public:
+	TarSource(DataSource *src, bool take_ownership);
+	~TarSource();
+	int64_t read(uint8_t *dst, size_t size) override final;
+	bool isError() override final;
+	bool isEof() override final;
+	bool next(std::string& name, int64_t& size) override final;
+private:
+	DataSource *_src;
+	bool _owned;
+	bool _eof;
+	int _error;
+	size_t _block_size;
+	size_t _data_size;
+	size_t _pos;
 };
 
 } // namespace libcdoc

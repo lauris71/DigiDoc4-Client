@@ -138,7 +138,7 @@ CDoc2Reader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock *lock)
 }
 
 int
-CDoc2Reader::decryptPayload(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer *consumer)
+CDoc2Reader::decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer *consumer)
 {
 	if (!_at_nonce) {
 		int result = _src->seek(_nonce_pos);

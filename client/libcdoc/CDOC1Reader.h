@@ -17,7 +17,7 @@ public:
 
 	const libcdoc::Lock *getDecryptionLock(const std::vector<uint8_t>& cert) override final;
 	int getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock *lock) override final;
-	int decryptPayload(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer *dst) override final;
+	int decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer *dst) override final;
 
 	const std::vector<libcdoc::Lock *>& getLocks() override;
 	//const std::vector<libcdoc::CDoc::File>& getFiles() override;

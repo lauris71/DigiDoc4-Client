@@ -2,6 +2,19 @@
 
 #include "tar.h"
 
+std::vector<std::string>
+split (const std::string &s, char delim) {
+	std::vector<std::string> result;
+	std::stringstream ss (s);
+	std::string item;
+
+	while (getline (ss, item, delim)) {
+		result.push_back (item);
+	}
+
+	return result;
+}
+
 template<std::size_t SIZE>
 static int64_t fromOctal(const std::array<char,SIZE> &data)
 {
@@ -277,4 +290,120 @@ libcdoc::TarConsumer::open(const std::string& name, int64_t size)
 	h.typeflag = '0';
 	if(writeHeader(_dst, h, size) < 0) return OUTPUT_ERROR;
 	return OK;
+}
+
+libcdoc::TarSource::TarSource(DataSource *src, bool take_ownership)
+	: _src(src), _owned(take_ownership), _eof(false), _error(OK), _block_size(0), _data_size(0), _pos(0)
+{
+
+}
+
+libcdoc::TarSource::~TarSource()
+{
+	if (_owned) {
+		delete _src;
+	}
+}
+
+int64_t
+libcdoc::TarSource::read(uint8_t *dst, size_t size)
+{
+	if (_error != OK) return _error;
+	size_t rem = _data_size - _pos;
+	return _src->read(dst, std::min(rem, size));
+}
+
+bool
+libcdoc::TarSource::isError()
+{
+	return _error != OK;
+}
+
+bool
+libcdoc::TarSource::isEof()
+{
+	return _eof;
+}
+
+bool
+libcdoc::TarSource::next(std::string& name, int64_t& size)
+{
+	Header h;
+
+	if (_pos < _block_size) {
+		int64_t result = _src->skip(_block_size - _pos);
+		_pos = 0;
+		_block_size = 0;
+		_data_size = 0;
+		if (result < 0) {
+			_error = INPUT_STREAM_ERROR;
+			return false;
+		}
+	}
+	while (!_src->isEof()) {
+		int64_t result = _src->read((uint8_t *)&h, sizeof(Header));
+		if (result != sizeof(Header)) {
+			_error = INPUT_STREAM_ERROR;
+			return false;
+		}
+		if (h.isNull()) {
+			result = _src->read((uint8_t *)&h, sizeof(Header));
+			if (result != sizeof(Header)) {
+				_error = INPUT_STREAM_ERROR;
+				return false;
+			}
+			_eof = true;
+			return false;
+		}
+		if (!h.verify()) {
+			_error = DATA_FORMAT_ERROR;
+			return false;
+		}
+
+		std::string h_name = std::string(h.name.data(), std::min<size_t>(h.name.size(), strlen(h.name.data())));
+		size_t h_size = fromOctal(h.size);
+		if(h.typeflag == 'x') {
+			std::vector<char> pax_in(h_size);
+			result = _src->read((uint8_t *) pax_in.data(), pax_in.size());
+			if (result != h_size) {
+				_error = INPUT_STREAM_ERROR;
+				return false;
+			}
+			std::string paxData(pax_in.data(), pax_in.size());
+			_src->skip(padding(h_size));
+			result = _src->read((uint8_t *)&h, sizeof(Header));
+			if (result != sizeof(Header)) {
+				_error = INPUT_STREAM_ERROR;
+				return false;
+			}
+			if(h.isNull() || !h.verify()) {
+				_error = DATA_FORMAT_ERROR;
+				return false;
+			}
+			h_size = fromOctal(h.size);
+			std::stringstream ss(paxData);
+			std::string data;
+			for(const std::string &data: split(paxData, '\n')) {
+				if(data.empty()) break;
+				const auto &headerValue = split(data, '=');
+				const auto &lenKeyword = split(headerValue[0], ' ');
+				if(data.size() + 1 != stoi(lenKeyword[0])) {
+					_error = DATA_FORMAT_ERROR;
+					return false;
+				}
+				if(lenKeyword[1] == "path") h_name = headerValue[1];
+				if(lenKeyword[1] == "size") h_size = stoi(headerValue[1]);
+			}
+		}
+		if(h.typeflag == '0' || h.typeflag == 0) {
+			name = h_name;
+			size = h_size;
+			_data_size = h_size;
+			_block_size = h_size + padding(h_size);
+			return true;
+		} else {
+			_src->skip(h_size + padding(h_size));
+		}
+	}
+	return false;
 }

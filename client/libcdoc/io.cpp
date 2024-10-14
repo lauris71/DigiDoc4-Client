@@ -54,7 +54,7 @@ DataConsumer::writeAll(DataSource& src)
 	return total_read;
 }
 
-size_t
+int64_t
 DataSource::skip(size_t size) {
 	static constexpr size_t BLOCK_SIZE = 65536;
 	uint8_t b[BLOCK_SIZE];

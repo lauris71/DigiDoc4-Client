@@ -5,13 +5,14 @@
 #include <fstream>
 #include <vector>
 
+#include <libcdoc/cdoc.h>
+
 namespace libcdoc {
 
 struct DataConsumer;
 struct DataSource;
 
 struct DataConsumer {
-	static constexpr int OK = 0;
 	static constexpr int OUTPUT_ERROR = -500;
 	static constexpr int OUTPUT_STREAM_ERROR = -501;
 
@@ -31,19 +32,18 @@ struct DataConsumer {
 };
 
 struct DataSource {
-	static constexpr int OK = 0;
 	static constexpr int INPUT_ERROR = -600;
 	static constexpr int INPUT_STREAM_ERROR = -601;
 
 	virtual ~DataSource() = default;
-	virtual int seek(size_t pos) { return INPUT_STREAM_ERROR; }
+	virtual int seek(size_t pos) { return NOT_IMPLEMENTED; }
 	virtual int64_t read(uint8_t *dst, size_t size) = 0;
 	virtual bool isError() = 0;
 	virtual bool isEof() = 0;
 	virtual std::string getLastErrorStr(int code) const;
 
-	size_t skip(size_t size);
-	size_t readAll(DataConsumer& dst) {
+	int64_t skip(size_t size);
+	int64_t readAll(DataConsumer& dst) {
 		return dst.writeAll(*this);
 	}
 };

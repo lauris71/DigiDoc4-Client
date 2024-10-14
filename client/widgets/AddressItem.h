@@ -21,8 +21,6 @@
 
 #include <memory>
 
-#include <libcdoc/cdoc.h>
-
 #include "CryptoDoc.h"
 #include "widgets/Item.h"
 

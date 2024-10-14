@@ -19,8 +19,6 @@
 
 #pragma once
 
-#include <libcdoc/cdoc.h>
-
 #include <QDialog>
 
 #include "CryptoDoc.h"

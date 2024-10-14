@@ -15,6 +15,9 @@ else()
 	set(TSL_QRC ${CMAKE_CURRENT_BINARY_DIR}/TSL.qrc)
 endif()
 
+set(LIBCDOC_LIBRARIES ${CMAKE_CURRENT_SOURCE_DIR}/libcdoc/build/libcdoc/libcdoc_static.a)
+set(LIBCDOC_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libcdoc)
+
 configure_file( translations/tr.qrc tr.qrc COPYONLY )
 qt_add_translation(SOURCES translations/en.ts translations/et.ts translations/ru.ts)
 
@@ -92,17 +95,16 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
         CDocSupport.cpp CDocSupport.h
 )
 
-add_subdirectory(libcdoc)
-
 target_link_libraries(${PROJECT_NAME}
 	qdigidoccommon
-        cdoc
 	Qt${QT_VERSION_MAJOR}::PrintSupport
 	Qt${QT_VERSION_MAJOR}::Svg
 	${LIBDIGIDOCPP_LIBRARY}
 	${LDAP_LIBRARIES}
 	$<TARGET_NAME_IF_EXISTS:flatbuffers::flatbuffers>
 	$<TARGET_NAME_IF_EXISTS:flatbuffers::flatbuffers_shared>
+	${LIBCDOC_LIBRARIES}
+        ${LIBXML2_LIBRARIES}
 	ZLIB::ZLIB
 )
 
@@ -122,7 +124,13 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 	MACOSX_BUNDLE_BUNDLE_NAME ${PROJECT_NAME}
 	MACOSX_BUNDLE_GUI_IDENTIFIER "ee.ria.${PROJECT_NAME}"
 )
-target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_BUILD_RPATH} ${LIBDIGIDOCPP_INCLUDE_DIR})
+target_include_directories(${PROJECT_NAME} PRIVATE
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_BUILD_RPATH}
+    ${LIBDIGIDOCPP_INCLUDE_DIR}
+    ${LIBCDOC_INCLUDE_DIR}
+)
+
 target_compile_definitions(${PROJECT_NAME} PRIVATE
 	CDOC2_GET_URL="${CDOC2_GET_URL}"
 	CDOC2_POST_URL="${CDOC2_POST_URL}"

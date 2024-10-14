@@ -21,8 +21,6 @@
 
 #include <QWidget>
 
-#include <libcdoc/cdoc.h>
-
 #include "common_enums.h"
 #include "QSmartCard.h"
 #include "CryptoDoc.h"

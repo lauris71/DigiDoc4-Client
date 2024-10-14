@@ -17,6 +17,7 @@ find_package(LDAP REQUIRED)
 find_package(QT NAMES Qt6 Qt5 COMPONENTS Core REQUIRED)
 find_package(Qt${QT_VERSION_MAJOR} 5.12.0 REQUIRED COMPONENTS Core Widgets Network PrintSupport Svg LinguistTools)
 find_package(FlatBuffers CONFIG REQUIRED NAMES FlatBuffers Flatbuffers)
+find_package(LibXml2 REQUIRED)
 find_package(ZLIB REQUIRED)
 
 set_env( TSL_URL "https://ec.europa.eu/tools/lotl/eu-lotl.xml" CACHE STRING "TSL trust list primary URL" )

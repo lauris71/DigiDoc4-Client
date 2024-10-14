@@ -42,8 +42,9 @@
 #include <QtNetwork/QSslKey>
 #include <QtWidgets/QMessageBox>
 
-#include <libcdoc/cdoc2.h>
-#include <libcdoc/certificate.h>
+#include <libcdoc/CDocReader.h>
+#include <libcdoc/CDocWriter.h>
+#include <libcdoc/Certificate.h>
 #include <libcdoc/Crypto.h>
 
 using namespace ria::qdigidoc4;

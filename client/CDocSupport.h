@@ -28,7 +28,7 @@
 #include <libcdoc/Configuration.h>
 #include <libcdoc/CryptoBackend.h>
 #include <libcdoc/NetworkBackend.h>
-#include <libcdoc/io.h>
+#include <libcdoc/Io.h>
 
 struct DDConfiguration : public libcdoc::Configuration {
 	std::string getValue(const std::string& param) final;

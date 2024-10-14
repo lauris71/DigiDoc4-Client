@@ -26,8 +26,8 @@
 #include <QtCore/QIODevice>
 #include <QtNetwork/QSslCertificate>
 
-#include <libcdoc/cdoc.h>
-#include <libcdoc/certificate.h>
+#include <libcdoc/CDoc.h>
+#include <libcdoc/Certificate.h>
 #include <libcdoc/Lock.h>
 #include <libcdoc/Recipient.h>
 

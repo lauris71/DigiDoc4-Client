@@ -17,6 +17,7 @@ message("-- Found libdigidocpp: ${libdigidocpp_DIR} (found version \"${libdigido
 find_package( LDAP REQUIRED )
 find_package(Qt6 6.2.0 REQUIRED COMPONENTS Core Widgets Network PrintSupport SvgWidgets LinguistTools)
 find_package(FlatBuffers CONFIG REQUIRED NAMES FlatBuffers Flatbuffers)
+find_package(LibXml2 REQUIRED)
 find_package(ZLIB REQUIRED)
 
 set_env( TSL_URL "https://ec.europa.eu/tools/lotl/eu-lotl.xml" CACHE STRING "TSL trust list primary URL" )

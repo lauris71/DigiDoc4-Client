@@ -104,8 +104,6 @@ qt_add_translations(${PROJECT_NAME} TS_FILES
 )
 qt_add_resources(${PROJECT_NAME} tsl BASE ${TSL_DIR} PREFIX /TSL FILES ${TSL_LIST})
 
-add_subdirectory(libcdoc)
-
 target_link_libraries(${PROJECT_NAME}
 	qdigidoccommon
 	cdoc
@@ -115,6 +113,8 @@ target_link_libraries(${PROJECT_NAME}
 	${LDAP_LIBRARIES}
 	$<TARGET_NAME_IF_EXISTS:flatbuffers::flatbuffers>
 	$<TARGET_NAME_IF_EXISTS:flatbuffers::flatbuffers_shared>
+	${LIBCDOC_LIBRARIES}
+        ${LIBXML2_LIBRARIES}
 	ZLIB::ZLIB
 )
 
@@ -129,7 +129,12 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 	MACOSX_BUNDLE_BUNDLE_NAME ${PROJECT_NAME}
 	MACOSX_BUNDLE_GUI_IDENTIFIER "ee.ria.${PROJECT_NAME}"
 )
-target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_BUILD_RPATH} ${LIBDIGIDOCPP_INCLUDE_DIR})
+target_include_directories(${PROJECT_NAME} PRIVATE
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_BUILD_RPATH}
+    ${LIBDIGIDOCPP_INCLUDE_DIR}
+    ${LIBCDOC_INCLUDE_DIR}
+)
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
 	CDOC2_GET_URL="${CDOC2_GET_URL}"

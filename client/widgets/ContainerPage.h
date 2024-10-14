@@ -19,8 +19,6 @@
 
 #pragma once
 
-#include <libcdoc/cdoc.h>
-
 #include "common_enums.h"
 #include "widgets/MainAction.h"
 #include "CryptoDoc.h"

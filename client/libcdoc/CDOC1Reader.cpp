@@ -121,7 +121,7 @@ CDoc1Reader::getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock *lock)
 }
 
 int
-CDoc1Reader::decryptPayload(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer *dst)
+CDoc1Reader::decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer *dst)
 {
 	std::vector<uint8_t> data = this->decryptData(fmk);
 	std::string mime = d->mime;

@@ -170,7 +170,7 @@ void CryptoDoc::Private::run()
 		std::vector<uint8_t> pfmk(fmk.cbegin(), fmk.cend());
 
 		TempListConsumer cons;
-		if (reader->decryptPayload(pfmk, &cons) == libcdoc::OK) {
+		if (reader->decrypt(pfmk, &cons) == libcdoc::OK) {
 			files = std::move(cons.files);
 			// Success, immediately create writer from reader
 			keys.clear();

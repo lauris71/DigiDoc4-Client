@@ -241,7 +241,7 @@ TempListConsumer::close()
 	if (files.empty()) return OUTPUT_ERROR;
 	IOEntry& file = files.back();
 	if (!file.data->isWritable()) return OUTPUT_ERROR;
-	return OK;
+	return libcdoc::OK;
 }
 
 bool
@@ -263,7 +263,7 @@ TempListConsumer::open(const std::string& name, int64_t size)
 	}
 	io.data->open(QIODevice::ReadWrite);
 	files.push_back(std::move(io));
-	return OK;
+	return libcdoc::OK;
 }
 
 StreamListSource::StreamListSource(const std::vector<IOEntry>& files) : _files(files), _current(-1)

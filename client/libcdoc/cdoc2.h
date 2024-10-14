@@ -15,7 +15,7 @@ public:
 	const std::vector<libcdoc::Lock *>& getLocks() override final { return locks; }
 	const libcdoc::Lock *getDecryptionLock(const std::vector<uint8_t>& cert) final;
 	int getFMK(std::vector<uint8_t>& fmk, const libcdoc::Lock *lock) override final;
-	int decryptPayload(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer *consumer) override final;
+	int decrypt(const std::vector<uint8_t>& fmk, libcdoc::MultiDataConsumer *consumer) override final;
 
 	CDoc2Reader(libcdoc::DataSource *src, bool take_ownership = false);
 	CDoc2Reader(const std::string &path);

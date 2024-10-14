@@ -28,11 +28,11 @@ struct FileListConsumer : public libcdoc::MultiDataConsumer {
 		file.data.insert(file.data.end(), src, src + size);
 		return size;
 	}
-	int close() override final { return OK; }
+	int close() override final { return libcdoc::OK; }
 	bool isError() override final { return false; }
 	int open(const std::string& name, int64_t size) override final {
 		files.push_back({name, "application/octet-stream", {}});
-		return OK;
+		return libcdoc::OK;
 	}
 };
 

@@ -93,7 +93,7 @@ struct StreamListSource : public libcdoc::MultiDataSource {
 	bool isError() override final;
 	bool isEof() override final;
 	size_t getNumComponents() override final;
-	bool next(std::string& name, int64_t& size) override final;
+	int next(std::string& name, int64_t& size) override final;
 
 	const std::vector<IOEntry>& _files;
 	int64_t _current;

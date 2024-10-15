@@ -1,3 +1,5 @@
+set(CMAKE_CXX_STANDARD 20)
+
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/TSL.qrc)
 	set(TSL_QRC ${CMAKE_CURRENT_SOURCE_DIR}/TSL.qrc)
 else()
@@ -15,7 +17,7 @@ else()
 	set(TSL_QRC ${CMAKE_CURRENT_BINARY_DIR}/TSL.qrc)
 endif()
 
-set(LIBCDOC_LIBRARIES ${CMAKE_CURRENT_SOURCE_DIR}/libcdoc/build/libcdoc/libcdoc_static.a)
+set(LIBCDOC_LIBRARIES ${CMAKE_CURRENT_SOURCE_DIR}/libcdoc/build/libcdoc/libcdoc_staticd.a)
 set(LIBCDOC_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libcdoc)
 
 configure_file( translations/tr.qrc tr.qrc COPYONLY )
@@ -47,8 +49,6 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
 	Colors.h
 	Crypto.cpp
 	Crypto.h
-	CDoc1.cpp CDoc1.h
-	CDoc2.cpp CDoc2.h
 	CryptoDoc.cpp
 	CryptoDoc.h
 	DateTime.cpp

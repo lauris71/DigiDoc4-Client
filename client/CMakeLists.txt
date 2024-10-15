@@ -1,3 +1,5 @@
+set(CMAKE_CXX_STANDARD 20)
+
 get_target_property(qtCore_install_prefix Qt6::qmake IMPORTED_LOCATION)
 get_filename_component(qtCore_install_prefix ${qtCore_install_prefix} DIRECTORY)
 get_filename_component(TSL_FILENAME ${TSL_URL} NAME_WLE)
@@ -43,8 +45,6 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
 	CheckConnection.h
 	Crypto.cpp
 	Crypto.h
-	CDoc1.cpp CDoc1.h
-	CDoc2.cpp CDoc2.h
 	CryptoDoc.cpp
 	CryptoDoc.h
 	DateTime.cpp

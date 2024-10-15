@@ -48,7 +48,7 @@ DDCryptoBackend::decryptRSA(std::vector<uint8_t>& result, const std::vector<uint
 			return backend->decrypt(qdata, oaep);
 	});
 	result.assign(qkek.cbegin(), qkek.cend());
-	return (result.empty()) ? OPENSSL_ERROR : OK;
+	return (result.empty()) ? OPENSSL_ERROR : libcdoc::OK;
 }
 
 const QString SHA256_MTH = QStringLiteral("http://www.w3.org/2001/04/xmlenc#sha256");
@@ -71,7 +71,7 @@ DDCryptoBackend::deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<ui
 				QByteArray(reinterpret_cast<const char *>(partyVInfo.data()), partyVInfo.size()));
 	});
 	dst.assign(decryptedKey.cbegin(), decryptedKey.cend());
-	return (dst.empty()) ? OPENSSL_ERROR : OK;
+	return (dst.empty()) ? OPENSSL_ERROR : libcdoc::OK;
 }
 
 int
@@ -83,14 +83,14 @@ DDCryptoBackend::deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<
 		return backend->deriveHMACExtract(qkey_material, qsalt, keySize);
 	});
 	dst = std::vector<uint8_t>(qkekpm.cbegin(), qkekpm.cend());
-	return (dst.empty()) ? OPENSSL_ERROR : OK;
+	return (dst.empty()) ? OPENSSL_ERROR : libcdoc::OK;
 }
 
 int
 DDCryptoBackend::getSecret(std::vector<uint8_t>& _secret, const std::string& _label)
 {
 	_secret = secret;
-	return OK;
+	return libcdoc::OK;
 }
 
 bool
@@ -298,13 +298,13 @@ StreamListSource::getNumComponents()
 	return _files.size();
 }
 
-bool
+int
 StreamListSource::next(std::string& name, int64_t& size)
 {
 	++_current;
-	if (_current >= _files.size()) return false;
+	if (_current >= _files.size()) return libcdoc::END_OF_STREAM;
 	_files[_current].data->seek(0);
 	name = _files[_current].name;
 	size = _files[_current].size;
-	return true;
+	return libcdoc::OK;
 }

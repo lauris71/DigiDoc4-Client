@@ -37,10 +37,12 @@ struct DDConfiguration : public libcdoc::Configuration {
 };
 
 struct DDCryptoBackend : public libcdoc::CryptoBackend {
-	int decryptRSA(std::vector<uint8_t>& result, const std::vector<uint8_t> &data, bool oaep) const final;
+	int decryptRSA(std::vector<uint8_t>& result, const std::vector<uint8_t> &data, bool oaep, const std::string& label) final;
 	int deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::string &digest, int keySize,
-		const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo) final;
-	int deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::vector<uint8_t> &salt, int keySize) final;
+						const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo,
+						const std::string& label) final;
+	int deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::vector<uint8_t> &salt, int keySize,
+						  const std::string& label) final;
 	int getSecret(std::vector<uint8_t>& secret, const std::string& label) final;
 
 	std::vector<uint8_t> secret;

@@ -37,10 +37,8 @@ class QSslKey;
 
 struct CDKey {
 	libcdoc::Recipient enc_key;
-	const libcdoc::Lock *dec_key = nullptr;
-	bool operator== (const CDKey& rhs) const {
-		return (enc_key == rhs.enc_key) && (dec_key == rhs.dec_key);
-	}
+	libcdoc::Lock dec_key;
+	bool operator== (const CDKey& rhs) const = default;
 };
 
 class CryptoDoc final: public QObject

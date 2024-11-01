@@ -136,8 +136,7 @@ public:
 		return std::unique_ptr<libcdoc::CDocWriter>(w);
 	}
 	std::unique_ptr<libcdoc::CDocReader> createCDocReader(const std::string& filename) {
-		libcdoc::CDocReader *r = libcdoc::CDocReader::createReader(filename,
-																   &conf, &crypto, &network);
+		libcdoc::CDocReader *r = libcdoc::CDocReader::createReader(filename, &conf, &crypto, &network);
 		if (!r) {
 			WarningDialog::show(tr("Failed to open document"), tr("Unsupported file format"));
 			return nullptr;
@@ -360,7 +359,8 @@ bool CryptoDoc::canDecrypt(const QSslCertificate &cert)
 {
 	if (!d->reader) return false;
 	QByteArray der = cert.toDer();
-	return d->reader->getDecryptionLock(std::vector<uint8_t>(der.cbegin(), der.cend())) != nullptr;
+	libcdoc::Lock lock;
+	return d->reader->getLockForCert(lock, std::vector<uint8_t>(der.cbegin(), der.cend()));
 }
 
 void CryptoDoc::clear( const QString &file )
@@ -392,11 +392,16 @@ CryptoDoc::decrypt(const libcdoc::Lock *lock, const QByteArray& secret)
 	if(!d->reader)
 		return true;
 
+	libcdoc::Lock ll;
 	if (lock == nullptr) {
 		QByteArray der = qApp->signer()->tokenauth().cert().toDer();
-		lock = d->reader->getDecryptionLock(std::vector<uint8_t>(der.cbegin(), der.cend()));
+		if (!d->reader->getLockForCert(ll, std::vector<uint8_t>(der.cbegin(), der.cend()))) {
+			WarningDialog::show(tr("You do not have the key to decrypt this document"));
+			return false;
+			lock = &ll;
+		}
 	}
-	if((lock == nullptr) || (lock->isSymmetric() && secret.isEmpty())) {
+	if((lock->isSymmetric() && secret.isEmpty())) {
 		WarningDialog::show(tr("You do not have the key to decrypt this document"));
 		return false;
 	}
@@ -421,7 +426,7 @@ CryptoDoc::decrypt(const libcdoc::Lock *lock, const QByteArray& secret)
 
 	d->crypto.secret.assign(secret.cbegin(), secret.cend());
 	std::vector<uint8_t> fmk;
-	if (d->reader->getFMK(fmk, lock) != libcdoc::OK) return false;
+	if (d->reader->getFMK(fmk, *lock) != libcdoc::OK) return false;
 	d->fmk = QByteArray(reinterpret_cast<const char *>(fmk.data()), fmk.size());
 #ifndef NDEBUG
 	qDebug() << "FMK (Transport key)" << d->fmk.toHex();

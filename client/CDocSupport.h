@@ -20,9 +20,6 @@
  *
  */
 
-#include <fstream>
-#include <sstream>
-
 #include <QtCore/QObject>
 
 #include <libcdoc/Configuration.h>
@@ -37,13 +34,12 @@ struct DDConfiguration : public libcdoc::Configuration {
 };
 
 struct DDCryptoBackend : public libcdoc::CryptoBackend {
-	int decryptRSA(std::vector<uint8_t>& result, const std::vector<uint8_t> &data, bool oaep, const std::string& label) final;
-	int deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::string &digest, int keySize,
+	int decryptRSA(std::vector<uint8_t>& result, const std::vector<uint8_t> &data, bool oaep, const std::string& label) override final;
+	int deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::string &digest,
 						const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo,
-						const std::string& label) final;
-	int deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::vector<uint8_t> &salt, int keySize,
-						  const std::string& label) final;
-	int getSecret(std::vector<uint8_t>& secret, const std::string& label) final;
+						const std::string& label) override final;
+	int deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::vector<uint8_t> &salt, const std::string& label) override final;
+	int getSecret(std::vector<uint8_t>& secret, const std::string& label) override final;
 
 	std::vector<uint8_t> secret;
 

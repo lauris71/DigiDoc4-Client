@@ -318,7 +318,7 @@ void ContainerPage::transition(CryptoDoc *container, const QSslCertificate &cert
 	setHeader(container->fileName());
 	for(auto& key: container->keys()) {
 		AddressItem *addr = new AddressItem(key, ui->rightPane, true);
-		connect(addr, &AddressItem::decrypt, this, [this,&key]{emit decryptReq(key.dec_key);});
+		connect(addr, &AddressItem::decrypt, this, [this, key]{emit decryptReq(&key.dec_key);});
 		ui->rightPane->addWidget(addr);
 	}
 	ui->leftPane->setModel(container->documentModel());
@@ -396,7 +396,7 @@ void ContainerPage::update(bool canDecrypt, CryptoDoc* container)
 	ui->rightPane->clear();
 	for(auto& key: container->keys()) {
 		AddressItem *addr = new AddressItem(key, ui->rightPane, true);
-		connect(addr, &AddressItem::decrypt, this, [this,&key]{emit decryptReq(key.dec_key);});
+		connect(addr, &AddressItem::decrypt, this, [this, key]{emit decryptReq(&key.dec_key);});
 		ui->rightPane->addWidget(addr);
 	}
 	if(container->state() & UnencryptedContainer)

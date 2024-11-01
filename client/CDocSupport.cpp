@@ -59,13 +59,13 @@ const QHash<QString, QCryptographicHash::Algorithm> SHA_MTH{
 };
 
 int
-DDCryptoBackend::deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::string &digest, int keySize,
-	const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo, const std::string& label)
+DDCryptoBackend::deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::string &digest,
+								 const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo, const std::string& label)
 {
-	QByteArray decryptedKey = qApp->signer()->decrypt([&publicKey, &digest, &keySize, &algorithmID, &partyUInfo, &partyVInfo](QCryptoBackend *backend) {
+	QByteArray decryptedKey = qApp->signer()->decrypt([&publicKey, &digest, &algorithmID, &partyUInfo, &partyVInfo](QCryptoBackend *backend) {
 			QByteArray ba(reinterpret_cast<const char *>(publicKey.data()), publicKey.size());
 			return backend->deriveConcatKDF(ba, SHA_MTH[QString::fromStdString(digest)],
-				keySize,
+				ECC_KEY_LEN,
 				QByteArray(reinterpret_cast<const char *>(algorithmID.data()), algorithmID.size()),
 				QByteArray(reinterpret_cast<const char *>(partyUInfo.data()), partyUInfo.size()),
 				QByteArray(reinterpret_cast<const char *>(partyVInfo.data()), partyVInfo.size()));
@@ -76,12 +76,12 @@ DDCryptoBackend::deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<ui
 
 int
 DDCryptoBackend::deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &key_material, const std::vector<uint8_t> &salt,
-								   int keySize, const std::string& label)
+								   const std::string& label)
 {
 	QByteArray qkey_material(reinterpret_cast<const char *>(key_material.data()), key_material.size());
 	QByteArray qsalt(reinterpret_cast<const char *>(salt.data()), salt.size());
-	QByteArray qkekpm = qApp->signer()->decrypt([&qkey_material, &qsalt, &keySize](QCryptoBackend *backend) {
-		return backend->deriveHMACExtract(qkey_material, qsalt, keySize);
+	QByteArray qkekpm = qApp->signer()->decrypt([&qkey_material, &qsalt](QCryptoBackend *backend) {
+		return backend->deriveHMACExtract(qkey_material, qsalt, ECC_KEY_LEN);
 	});
 	dst = std::vector<uint8_t>(qkekpm.cbegin(), qkekpm.cend());
 	return (dst.empty()) ? OPENSSL_ERROR : libcdoc::OK;

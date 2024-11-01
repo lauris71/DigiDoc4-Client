@@ -240,11 +240,10 @@ void MainWindow::decrypt(const libcdoc::Lock *lock)
 	if(!cryptoDoc) return;
 
 	QByteArray secret;
-	if (lock && (lock->type == libcdoc::Lock::Type::SYMMETRIC_KEY)) {
-		const libcdoc::LockSymmetric *skey = (const libcdoc::LockSymmetric *) lock;
+	if (lock && (lock->type == libcdoc::Lock::Type::SYMMETRIC_KEY || lock->type == libcdoc::Lock::Type::PASSWORD)) {
 		PasswordDialog p;
 		p.setLabel(QString::fromStdString(lock->label));
-		if (skey->kdf_iter > 0) {
+		if (lock->type == libcdoc::Lock::Type::PASSWORD) {
 			p.setMode(PasswordDialog::Mode::DECRYPT, PasswordDialog::Type::PASSWORD);
 			if(!p.exec()) return;
 			secret = p.secret();

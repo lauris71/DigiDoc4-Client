@@ -62,9 +62,9 @@ AddressItem::AddressItem(const CDKey& key, QWidget *parent, bool showIcon)
         ui->decrypt->hide();
     }
 
-	if (key.dec_key && key.dec_key->isSymmetric()) {
+	if (key.dec_key.isSymmetric()) {
 		ui->decrypt->show();
-		connect(ui->decrypt, &QToolButton::clicked, this, [this]{ emit decrypt(ui->key.dec_key);});
+		connect(ui->decrypt, &QToolButton::clicked, this, [this]{ emit decrypt(&ui->key.dec_key);});
 	} else {
 		ui->code = {};
         ui->label = key->label;
@@ -79,9 +79,9 @@ AddressItem::AddressItem(const CDKey& key, QWidget *parent, bool showIcon)
 		ui->label = (!kcert.subjectInfo("GN").isEmpty() && !kcert.subjectInfo("SN").isEmpty() ?
 						 kcert.subjectInfo("GN").join(' ') + " " + kcert.subjectInfo("SN").join(' ') :
 						 kcert.subjectInfo("CN").join(' ')).toHtmlEscaped();
-	} else if (ui->key.dec_key && ui->key.dec_key->isCertificate()) {
-			libcdoc::LockCert *kd = (libcdoc::LockCert *) ui->key.dec_key;
-			QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(kd->cert.data()), kd->cert.size()), QSsl::Der);
+	} else if (ui->key.dec_key.isCertificate()) {
+			std::vector<uint8_t> cert = ui->key.dec_key.getBytes(libcdoc::Lock::Params::CERT);
+			QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(cert.data()), cert.size()), QSsl::Der);
 			ui->code = SslCertificate(kcert).personalCode().toHtmlEscaped();
 			ui->label = (!kcert.subjectInfo("GN").isEmpty() && !kcert.subjectInfo("SN").isEmpty() ?
 							 kcert.subjectInfo("GN").join(' ') + " " + kcert.subjectInfo("SN").join(' ') :
@@ -90,16 +90,16 @@ AddressItem::AddressItem(const CDKey& key, QWidget *parent, bool showIcon)
 		ui->code.clear();
 		if (ui->key.enc_key.type != libcdoc::Recipient::Type::NONE) {
 			ui->label = QString::fromStdString(key.enc_key.label).toHtmlEscaped();
-		} else if (ui->key.dec_key) {
-			ui->label = QString::fromStdString(key.dec_key->label).toHtmlEscaped();
+		} else if (ui->key.dec_key.isValid()) {
+			ui->label = QString::fromStdString(key.dec_key.label).toHtmlEscaped();
 		}
 	}
 	if(ui->label.isEmpty()) {
 		if (ui->key.enc_key.isPKI()) {
 			ui->label = QString::fromUtf8(reinterpret_cast<const char *>(ui->key.enc_key.rcpt_key.data()), ui->key.enc_key.rcpt_key.size());
-		} else if (ui->key.dec_key && (ui->key.dec_key->type == libcdoc::Lock::PUBLIC_KEY)) {
-			const libcdoc::LockPublicKey& pk = static_cast<const libcdoc::LockPublicKey&>(*ui->key.dec_key);
-			ui->label = QString::fromUtf8(reinterpret_cast<const char *>(pk.key_material.data()), pk.key_material.size());
+		} else if (ui->key.dec_key.type == libcdoc::Lock::PUBLIC_KEY) {
+			std::vector<uint8_t> key_material = ui->key.dec_key.getBytes(libcdoc::Lock::Params::KEY_MATERIAL);
+			ui->label = QString::fromUtf8(reinterpret_cast<const char *>(key_material.data()), key_material.size());
 		}
 	}
 	setIdType();
@@ -127,19 +127,6 @@ const CDKey& AddressItem::getKey() const
 	return ui->key;
 }
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-void AddressItem::idChanged(const CDKey& key)
-{
-	ui->yourself = (ui->key.enc_key && key.enc_key && key.enc_key->isTheSameRecipient(*ui->key.enc_key)) ||
-			(ui->key.dec_key && ui->key.dec_key && key.dec_key->isTheSameRecipient(*ui->key.dec_key));
-	setName();
-}
-
->>>>>>> f301297 (Split cdoc keys into enc and dec keys)
-=======
->>>>>>> 9e480aa (Lots of rearrangements. Added push interface to CDocWriter.)
 void AddressItem::idChanged(const SslCertificate &cert)
 {
 	QByteArray qder = cert.toDer();
@@ -147,10 +134,10 @@ void AddressItem::idChanged(const SslCertificate &cert)
 
 	if (!ui->key.enc_key.isEmpty()) {
 		ui->yourself = ui->key.enc_key.isTheSameRecipient(sder);
-	} else if (ui->key.dec_key != nullptr) {
+	} else if (ui->key.dec_key.isValid()) {
 		QSslKey pkey = cert.publicKey();
 		QByteArray der = pkey.toDer();
-		ui->yourself = ui->key.dec_key->hasTheSameKey(std::vector<uint8_t>(der.cbegin(), der.cend()));
+		ui->yourself = ui->key.dec_key.hasTheSameKey(std::vector<uint8_t>(der.cbegin(), der.cend()));
 	}
 	setName();
 }
@@ -172,12 +159,8 @@ QWidget* AddressItem::lastTabWidget()
 
 void AddressItem::mouseReleaseEvent(QMouseEvent * /*event*/)
 {
-<<<<<<< HEAD
 	if(!ui->key->unsupported)
         (new KeyDialog(*ui->key))->open();
-=======
-	(new KeyDialog(ui->key, this))->open();
->>>>>>> f301297 (Split cdoc keys into enc and dec keys)
 }
 
 void AddressItem::setName()
@@ -206,33 +189,13 @@ void AddressItem::setIdType()
 	if (ui->key.dec_key->isPKI()) {
 		const libcdoc::LockPKI *pki = (const libcdoc::LockPKI *)ui->key.dec_key;
 		if (ui->key.dec_key->isCertificate()) {
-<<<<<<< HEAD
-			std::shared_ptr<libcdoc::CKeyCert> ckd = std::static_pointer_cast<libcdoc::CKeyCert>(ui->key.dec_key);
+			const libcdoc::LockCert *ckd = (const libcdoc::LockCert *) ui->key.dec_key;
             ui->idType->setHidden(false);
             QString str;
             SslCertificate cert(ckd->cert);
             SslCertificate::CertType type = cert.type();
     		if(ui->key->unsupported)
-=======
-			const libcdoc::LockCert *ckd = (const libcdoc::LockCert *) ui->key.dec_key;
-			QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(ckd->cert.data()), ckd->cert.size()), QSsl::Der);
-			ui->idType->setHidden(false);
-			QString str;
-			SslCertificate cert(kcert);
-			SslCertificate::CertType type = cert.type();
-			if(type & SslCertificate::DigiIDType)
-				str = tr("digi-ID");
-			else if(type & SslCertificate::EstEidType)
-				str = tr("ID-card");
-			else if(type & SslCertificate::MobileIDType)
-				str = tr("mobile-ID");
-			else if(type & SslCertificate::TempelType)
->>>>>>> 9e480aa (Lots of rearrangements. Added push interface to CDocWriter.)
-			{
-				ui->label = tr("Unsupported cryptographic algorithm or recipient type");
-				ui->idType->clear();
-			}
-<<<<<<< HEAD
+				str = "Unsupported";
             else if(type & SslCertificate::DigiIDType)
                 str = tr("digi-ID");
             else if(type & SslCertificate::EstEidType)
@@ -292,31 +255,6 @@ void AddressItem::setIdType()
     } else {
         ui->idType->setHidden(false);
         ui->idType->setText("Unknown key type");
-=======
-
-			if(!str.isEmpty())
-				str += QStringLiteral(" - ");
-			DateTime date(cert.expiryDate().toLocalTime());
-			ui->idType->setText(QStringLiteral("%1%2 %3").arg(str,
-															  cert.isValid() ? tr("Expires on") : tr("Expired on"),
-															  date.formatDate(QStringLiteral("dd. MMMM yyyy"))));
-		} else {
-			QString type = (pki->pk_type == libcdoc::Lock::PKType::RSA) ? "RSA" : "ECC";
-			ui->idType->setHidden(false);
-			ui->idType->setText(type + " public key");
-		}
-	} else if (ui->key.dec_key->isSymmetric()) {
-		const libcdoc::LockSymmetric *ckd = (const libcdoc::LockSymmetric *) ui->key.dec_key;
-		ui->idType->setHidden(false);
-		if (ckd->kdf_iter > 0) {
-			ui->idType->setText("Password derived key");
-		} else {
-			ui->idType->setText("Symmetric key");
-		}
-	} else {
-		ui->idType->setHidden(false);
-		ui->idType->setText("Unknown key type");
->>>>>>> 9e480aa (Lots of rearrangements. Added push interface to CDocWriter.)
 	}
 	ui->idType->setHidden(ui->idType->text().isEmpty());
 	ui->expire->setHidden(ui->expire->text().isEmpty());

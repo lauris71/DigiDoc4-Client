@@ -17,8 +17,6 @@
  *
  */
 
-#include <fstream>
-
 #include "CryptoDoc.h"
 
 #include "Application.h"
@@ -103,10 +101,8 @@ public:
 		e.exec();
 	}
 
-	//std::unique_ptr<libcdoc::CDoc> cdoc;
-	/* INVARIANT: Either reader or writer but not both is not null */
 	std::unique_ptr<libcdoc::CDocReader> reader;
-	std::unique_ptr<libcdoc::CDocWriter> writer;
+	std::string writer_last_error;
 
 	QString			fileName;
 	//bool			encrypted = false;
@@ -131,10 +127,6 @@ public:
 	const std::vector<IOEntry> &getFiles() {
 		return files;
 	}
-	std::unique_ptr<libcdoc::CDocWriter> createCDocWriter() {
-		libcdoc::CDocWriter *w = libcdoc::CDocWriter::createWriter(Settings::CDOC2_DEFAULT ? 2 : 1, &conf, &crypto, &network);
-		return std::unique_ptr<libcdoc::CDocWriter>(w);
-	}
 	std::unique_ptr<libcdoc::CDocReader> createCDocReader(const std::string& filename) {
 		libcdoc::CDocReader *r = libcdoc::CDocReader::createReader(filename, &conf, &crypto, &network);
 		if (!r) {
@@ -154,7 +146,7 @@ bool CryptoDoc::Private::warnIfNotWritable() const
 {
 	if(fileName.isEmpty()) {
 		WarningDialog::show(CryptoDoc::tr("Container is not open"));
-	} else if(!writer) {
+	} else if(reader) {
 		WarningDialog::show(CryptoDoc::tr("Container is encrypted"));
 	} else {
 		return false;
@@ -173,10 +165,10 @@ void CryptoDoc::Private::run()
 			files = std::move(cons.files);
 			// Success, immediately create writer from reader
 			keys.clear();
-			writer = createCDocWriter();
+			writer_last_error.clear();
 			reader.reset();
 		}
-	} else if (writer) {
+	} else {
 		qCDebug(CRYPTO) << "Encrypt" << fileName;
 		libcdoc::OStreamConsumer ofs(fileName.toStdString());
 		if (ofs.isError()) return;
@@ -189,17 +181,20 @@ void CryptoDoc::Private::run()
 			auto key = libcdoc::Recipient::makeSymmetric(label.toStdString(), kdf_iter);
 			enc_keys.push_back(key);
 		}
-		if (writer->encrypt(ofs, slsrc, enc_keys) == libcdoc::OK) {
+
+		libcdoc::CDocWriter *writer = libcdoc::CDocWriter::createWriter(Settings::CDOC2_DEFAULT ? 2 : 1, &ofs, false, &conf, &crypto, &network);
+
+		if (writer->encrypt(slsrc, enc_keys) == libcdoc::OK) {
+			delete writer;
 			ofs.close();
 			// Encryption successful, open new reader
 			reader = createCDocReader(fileName.toStdString());
 			if (!reader) return;
-			writer.reset();
 		} else {
+			writer_last_error = writer->getLastErrorStr();
+			delete writer;
 			std::filesystem::remove(std::filesystem::path(fileName.toStdString()));
 		}
-	} else {
-		qWarning() << "Neither reader nor writer is initialized";
 	}
 }
 
@@ -216,7 +211,7 @@ bool CDocumentModel::addFile(const QString &file, const QString &mime)
 		WarningDialog::show(DocumentModel::tr("Cannot add empty file to the container."));
 		return false;
 	}
-	if(d->writer->version == 1 && info.size() > 120*1024*1024) {
+	if(!Settings::CDOC2_DEFAULT && info.size() > 120*1024*1024) {
 		WarningDialog::show(tr("Added file(s) exceeds the maximum size limit of the container (∼120MB). "
 			"<a href='https://www.id.ee/en/article/encrypting-large-120-mb-files/'>Read more about it</a>"));
 		return false;
@@ -338,7 +333,7 @@ CryptoDoc::~CryptoDoc() { clear(); delete d; }
 bool
 CryptoDoc::supportsSymmetricKeys() const
 {
-	return d->writer && d->writer->version >= 2;
+	return !d->reader && Settings::CDOC2_DEFAULT;
 }
 
 bool CryptoDoc::addEncryptionKey(const libcdoc::Recipient& key )
@@ -374,7 +369,7 @@ void CryptoDoc::clear( const QString &file )
 	d->tempFiles.clear();
 	d->reader.reset();
 	d->fileName = file;
-	d->writer = d->createCDocWriter();
+	d->writer_last_error.clear();
 }
 
 ContainerState CryptoDoc::state() const
@@ -397,11 +392,11 @@ CryptoDoc::decrypt(const libcdoc::Lock *lock, const QByteArray& secret)
 		QByteArray der = qApp->signer()->tokenauth().cert().toDer();
 		if (!d->reader->getLockForCert(ll, std::vector<uint8_t>(der.cbegin(), der.cend()))) {
 			WarningDialog::show(tr("You do not have the key to decrypt this document"));
-			return false;
-			lock = &ll;
-		}
-	}
-	if((lock->isSymmetric() && secret.isEmpty())) {
+            return false;
+        }
+        lock = &ll;
+    }
+    if(!lock || (lock->isSymmetric() && secret.isEmpty())) {
 		WarningDialog::show(tr("You do not have the key to decrypt this document"));
 		return false;
 	}
@@ -479,8 +474,7 @@ bool CryptoDoc::encrypt( const QString &filename, const QString& label, const QB
 	if(d->isEncrypted()) {
 		open(d->fileName);
 	} else {
-		WarningDialog::show(tr("Failed to encrypt document. Please check your internet connection and network settings."),
-							QString::fromStdString(d->writer->getLastErrorStr()));
+		WarningDialog::show(tr("Failed to encrypt document. Please check your internet connection and network settings."), QString::fromStdString(d->writer_last_error));
 	}
 	return d->isEncrypted();
 }
@@ -509,7 +503,7 @@ bool CryptoDoc::open( const QString &file )
 	clear(file);
 	d->reader = d->createCDocReader(file.toStdString());
 	if (!d->reader) return false;
-	d->writer.reset();
+	d->writer_last_error.clear();
 	// fixme: This seems wrong
 	//if(!d->isEncrypted()) {
 	//	WarningDialog::show(tr("Failed to open document"),

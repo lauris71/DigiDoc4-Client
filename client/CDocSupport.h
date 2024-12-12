@@ -28,7 +28,8 @@
 #include <libcdoc/Io.h>
 
 struct DDConfiguration : public libcdoc::Configuration {
-	std::string getValue(const std::string& param) final;
+    std::string getValue(const std::string_view& param) final;
+    std::string getValue(const std::string_view& domain, const std::string_view& param) final;
 
 	explicit DDConfiguration() = default;
 };
@@ -41,6 +42,8 @@ struct DDCryptoBackend : public libcdoc::CryptoBackend {
 	int deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::vector<uint8_t> &salt, const std::string& label) override final;
 	int getSecret(std::vector<uint8_t>& secret, const std::string& label) override final;
 
+    int sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, const std::string& label) override { return libcdoc::NOT_IMPLEMENTED; }
+
 	std::vector<uint8_t> secret;
 
 	explicit DDCryptoBackend() = default;
@@ -50,10 +53,13 @@ struct DDNetworkBackend : public libcdoc::NetworkBackend, private QObject {
 	static constexpr int BACKEND_ERROR = -303;
 
 	std::string getLastErrorStr(int code) const final;
-	int sendKey(std::pair<std::string,std::string>& result, const std::vector<uint8_t> &recipient_id, const std::vector<uint8_t> &key_material, const std::string &type) final;
-	int fetchKey(std::vector<uint8_t>& result, const std::string& keyserver_id, const std::string& transaction_id);
+    int sendKey(std::string& transaction_id, const std::string& url, const libcdoc::Recipient& recipient, const std::vector<uint8_t> &key_material, const std::string &type) override final;
+    int fetchKey(std::vector<uint8_t>& result, const std::string& keyserver_id, const std::string& transaction_id) override final;
 
-	explicit DDNetworkBackend() = default;
+    int getClientTLSCertificate(std::vector<uint8_t>& dst) override final { return libcdoc::NOT_IMPLEMENTED; }
+    int getPeerTLSCerticates(std::vector<std::vector<uint8_t>> &dst) override final { return libcdoc::NOT_IMPLEMENTED; }
+
+    explicit DDNetworkBackend() = default;
 
 	std::string last_error;
 };

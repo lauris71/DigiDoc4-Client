@@ -107,6 +107,8 @@ checkConnection()
 	});
 }
 
+#undef CONFIG_URL
+
 QNetworkRequest
 request(const QString &keyserver_id, const QString &transaction_id = {}) {
 #ifdef CONFIG_URL
@@ -127,12 +129,44 @@ request(const QString &keyserver_id, const QString &transaction_id = {}) {
 }
 
 std::string
-DDConfiguration::getValue(const std::string& param)
+DDConfiguration::getValue(const std::string_view& param)
 {
 	if (param == libcdoc::Configuration::USE_KEYSERVER) {
 		return (Settings::CDOC2_USE_KEYSERVER) ? "true" : "false";
-	}
+    } else if (param == libcdoc::Configuration::KEYSERVER_ID) {
+        return Settings::CDOC2_DEFAULT_KEYSERVER;
+    }
 	return {};
+}
+
+std::string
+DDConfiguration::getValue(const std::string_view& domain, const std::string_view& param)
+{
+    std::string def = Settings::CDOC2_DEFAULT_KEYSERVER;
+    if (domain == def) {
+        if (param == libcdoc::Configuration::KEYSERVER_SEND_URL) {
+#ifdef CONFIG_URL
+            QJsonObject list = Application::confValue(QLatin1String("CDOC2-CONF")).toObject();
+            QJsonObject data = list.value(domain).toObject();
+            QString url = data.value(QLatin1String("POST")).toString(Settings::CDOC2_POST);
+            return url.toStdString();
+#else
+            QString url = Settings::CDOC2_POST;
+            return url.toStdString();
+#endif
+        } else if (param == libcdoc::Configuration::KEYSERVER_FETCH_URL) {
+#ifdef CONFIG_URL
+            QJsonObject list = Application::confValue(QLatin1String("CDOC2-CONF")).toObject();
+            QJsonObject data = list.value(domain).toObject();
+            QString url = data.value(QLatin1String("POST")).toString(Settings::CDOC2_GET);
+            return url.toStdString();
+#else
+            QString url = Settings::CDOC2_GET;
+            return url.toStdString();
+#endif
+        }
+    }
+    return {};
 }
 
 std::string
@@ -143,18 +177,10 @@ DDNetworkBackend::getLastErrorStr(int code) const
 }
 
 int
-DDNetworkBackend::sendKey (std::pair<std::string,std::string>& result, const std::vector<uint8_t> &recipient_id, const std::vector<uint8_t> &key_material, const std::string &type)
+DDNetworkBackend::sendKey (std::string& transaction_id, const std::string& url, const libcdoc::Recipient& recipient, const std::vector<uint8_t> &key_material, const std::string &type)
 {
-	std::string keyserver_id = Settings::CDOC2_DEFAULT_KEYSERVER;
-	if(keyserver_id.empty()) {
-		last_error = "keyserver_id cannot be empty";
-		return BACKEND_ERROR;
-	}
-	QNetworkRequest req = request(QString::fromStdString(keyserver_id));
-	if(req.url().isEmpty()) {
-		last_error = "No valid config found for keyserver_id: " + keyserver_id;
-		return BACKEND_ERROR;
-	}
+    QNetworkRequest req(QString::fromStdString(url + "/key-capsules"));
+    req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
 	if(!checkConnection()) {
 		last_error = "No connection";
 		return BACKEND_ERROR;
@@ -162,26 +188,25 @@ DDNetworkBackend::sendKey (std::pair<std::string,std::string>& result, const std
 	QScopedPointer<QNetworkAccessManager,QScopedPointerDeleteLater> nam(CheckConnection::setupNAM(req, Settings::CDOC2_POST_CERT));
 	QEventLoop e;
 	QNetworkReply *reply = nam->post(req, QJsonDocument({
-		{QLatin1String("recipient_id"), QLatin1String(QByteArray(reinterpret_cast<const char *>(recipient_id.data()), recipient_id.size()).toBase64())},
+        {QLatin1String("recipient_id"), QLatin1String(QByteArray(reinterpret_cast<const char *>(recipient.rcpt_key.data()), recipient.rcpt_key.size()).toBase64())},
 		{QLatin1String("ephemeral_key_material"), QLatin1String(QByteArray(reinterpret_cast<const char *>(key_material.data()), key_material.size()).toBase64())},
 		{QLatin1String("capsule_type"), QLatin1String(type)},
 	}).toJson());
 	connect(reply, &QNetworkReply::finished, &e, &QEventLoop::quit);
 	e.exec();
-	QString transaction_id;
+    QString tr_id;
 	if(reply->error() == QNetworkReply::NoError &&
 		reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 201) {
-		transaction_id = QString::fromLatin1(reply->rawHeader("Location")).remove(QLatin1String("/key-capsules/"));
+        tr_id = QString::fromLatin1(reply->rawHeader("Location")).remove(QLatin1String("/key-capsules/"));
 	} else {
 		last_error = reply->errorString().toStdString();
 		return BACKEND_ERROR;
 	}
-	if(transaction_id.isEmpty()) {
+    if(tr_id.isEmpty()) {
 		last_error = "Failed to post key capsule";
 		return BACKEND_ERROR;
 	}
-	result.first = keyserver_id;
-	result.second = transaction_id.toStdString();
+    transaction_id = tr_id.toStdString();
 	return OK;
 };
 

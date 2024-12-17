@@ -53,7 +53,7 @@ struct DDNetworkBackend : public libcdoc::NetworkBackend, private QObject {
 	static constexpr int BACKEND_ERROR = -303;
 
 	std::string getLastErrorStr(int code) const final;
-    int sendKey(std::string& transaction_id, const std::string& url, const libcdoc::Recipient& recipient, const std::vector<uint8_t> &key_material, const std::string &type) override final;
+    int sendKey(libcdoc::NetworkBackend::CapsuleInfo& dst, const std::string& url, const std::vector<uint8_t>& rcpt_key, const std::vector<uint8_t> &key_material, const std::string &type) override final;
     int fetchKey(std::vector<uint8_t>& result, const std::string& keyserver_id, const std::string& transaction_id) override final;
 
     int getClientTLSCertificate(std::vector<uint8_t>& dst) override final { return libcdoc::NOT_IMPLEMENTED; }

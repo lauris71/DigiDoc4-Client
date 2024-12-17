@@ -177,7 +177,7 @@ DDNetworkBackend::getLastErrorStr(int code) const
 }
 
 int
-DDNetworkBackend::sendKey (std::string& transaction_id, const std::string& url, const libcdoc::Recipient& recipient, const std::vector<uint8_t> &key_material, const std::string &type)
+DDNetworkBackend::sendKey (libcdoc::NetworkBackend::CapsuleInfo& dst, const std::string& url, const std::vector<uint8_t>& rcpt_key, const std::vector<uint8_t> &key_material, const std::string &type)
 {
     QNetworkRequest req(QString::fromStdString(url + "/key-capsules"));
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
@@ -188,7 +188,7 @@ DDNetworkBackend::sendKey (std::string& transaction_id, const std::string& url, 
 	QScopedPointer<QNetworkAccessManager,QScopedPointerDeleteLater> nam(CheckConnection::setupNAM(req, Settings::CDOC2_POST_CERT));
 	QEventLoop e;
 	QNetworkReply *reply = nam->post(req, QJsonDocument({
-        {QLatin1String("recipient_id"), QLatin1String(QByteArray(reinterpret_cast<const char *>(recipient.rcpt_key.data()), recipient.rcpt_key.size()).toBase64())},
+        {QLatin1String("recipient_id"), QLatin1String(QByteArray(reinterpret_cast<const char *>(rcpt_key.data()), rcpt_key.size()).toBase64())},
 		{QLatin1String("ephemeral_key_material"), QLatin1String(QByteArray(reinterpret_cast<const char *>(key_material.data()), key_material.size()).toBase64())},
 		{QLatin1String("capsule_type"), QLatin1String(type)},
 	}).toJson());
@@ -206,7 +206,10 @@ DDNetworkBackend::sendKey (std::string& transaction_id, const std::string& url, 
 		last_error = "Failed to post key capsule";
 		return BACKEND_ERROR;
 	}
-    transaction_id = tr_id.toStdString();
+    dst.transaction_id = tr_id.toStdString();
+    QDateTime dt = QDateTime::currentDateTimeUtc();
+    dt = dt.addMonths(6);
+    dst.expiry_time = dt.toSecsSinceEpoch();
 	return OK;
 };
 

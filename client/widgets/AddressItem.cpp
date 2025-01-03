@@ -62,9 +62,9 @@ AddressItem::AddressItem(const CDKey& key, QWidget *parent, bool showIcon)
         ui->decrypt->hide();
     }
 
-	if (key.dec_key.isSymmetric()) {
+	if (key.lock.isSymmetric()) {
 		ui->decrypt->show();
-		connect(ui->decrypt, &QToolButton::clicked, this, [this]{ emit decrypt(&ui->key.dec_key);});
+		connect(ui->decrypt, &QToolButton::clicked, this, [this]{ emit decrypt(&ui->key.lock);});
 	} else {
 		ui->code = {};
         ui->label = key->label;
@@ -73,14 +73,14 @@ AddressItem::AddressItem(const CDKey& key, QWidget *parent, bool showIcon)
 	ui->add->setFont(Styles::font(Styles::Condensed, 12));
 	ui->added->setFont(ui->add->font());
 
-	if (ui->key.enc_key.isCertificate()) {
-		QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(ui->key.enc_key.cert.data()), ui->key.enc_key.cert.size()), QSsl::Der);
+	if (ui->key.rcpt.isCertificate()) {
+		QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(ui->key.rcpt.cert.data()), ui->key.rcpt.cert.size()), QSsl::Der);
 		ui->code = SslCertificate(kcert).personalCode().toHtmlEscaped();
 		ui->label = (!kcert.subjectInfo("GN").isEmpty() && !kcert.subjectInfo("SN").isEmpty() ?
 						 kcert.subjectInfo("GN").join(' ') + " " + kcert.subjectInfo("SN").join(' ') :
 						 kcert.subjectInfo("CN").join(' ')).toHtmlEscaped();
-	} else if (ui->key.dec_key.isCertificate()) {
-			std::vector<uint8_t> cert = ui->key.dec_key.getBytes(libcdoc::Lock::Params::CERT);
+	} else if (ui->key.lock.isCertificate()) {
+			std::vector<uint8_t> cert = ui->key.lock.getBytes(libcdoc::Lock::Params::CERT);
 			QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(cert.data()), cert.size()), QSsl::Der);
 			ui->code = SslCertificate(kcert).personalCode().toHtmlEscaped();
 			ui->label = (!kcert.subjectInfo("GN").isEmpty() && !kcert.subjectInfo("SN").isEmpty() ?
@@ -88,17 +88,17 @@ AddressItem::AddressItem(const CDKey& key, QWidget *parent, bool showIcon)
 							 kcert.subjectInfo("CN").join(' ')).toHtmlEscaped();
 	} else {
 		ui->code.clear();
-		if (ui->key.enc_key.type != libcdoc::Recipient::Type::NONE) {
-			ui->label = QString::fromStdString(key.enc_key.label).toHtmlEscaped();
-		} else if (ui->key.dec_key.isValid()) {
-			ui->label = QString::fromStdString(key.dec_key.label).toHtmlEscaped();
+		if (ui->key.rcpt.type != libcdoc::Recipient::Type::NONE) {
+			ui->label = QString::fromStdString(key.rcpt.label).toHtmlEscaped();
+		} else if (ui->key.lock.isValid()) {
+			ui->label = QString::fromStdString(key.lock.label).toHtmlEscaped();
 		}
 	}
 	if(ui->label.isEmpty()) {
-		if (ui->key.enc_key.isPKI()) {
-			ui->label = QString::fromUtf8(reinterpret_cast<const char *>(ui->key.enc_key.rcpt_key.data()), ui->key.enc_key.rcpt_key.size());
-		} else if (ui->key.dec_key.type == libcdoc::Lock::PUBLIC_KEY) {
-			std::vector<uint8_t> key_material = ui->key.dec_key.getBytes(libcdoc::Lock::Params::KEY_MATERIAL);
+		if (ui->key.rcpt.isPKI()) {
+			ui->label = QString::fromUtf8(reinterpret_cast<const char *>(ui->key.rcpt.rcpt_key.data()), ui->key.rcpt.rcpt_key.size());
+		} else if (ui->key.lock.type == libcdoc::Lock::PUBLIC_KEY) {
+			std::vector<uint8_t> key_material = ui->key.lock.getBytes(libcdoc::Lock::Params::KEY_MATERIAL);
 			ui->label = QString::fromUtf8(reinterpret_cast<const char *>(key_material.data()), key_material.size());
 		}
 	}
@@ -132,12 +132,12 @@ void AddressItem::idChanged(const SslCertificate &cert)
 	QByteArray qder = cert.toDer();
 	std::vector<uint8_t> sder = std::vector<uint8_t>(qder.cbegin(), qder.cend());
 
-	if (!ui->key.enc_key.isEmpty()) {
-		ui->yourself = ui->key.enc_key.isTheSameRecipient(sder);
-	} else if (ui->key.dec_key.isValid()) {
+	if (!ui->key.rcpt.isEmpty()) {
+		ui->yourself = ui->key.rcpt.isTheSameRecipient(sder);
+	} else if (ui->key.lock.isValid()) {
 		QSslKey pkey = cert.publicKey();
 		QByteArray der = pkey.toDer();
-		ui->yourself = ui->key.dec_key.hasTheSameKey(std::vector<uint8_t>(der.cbegin(), der.cend()));
+		ui->yourself = ui->key.lock.hasTheSameKey(std::vector<uint8_t>(der.cbegin(), der.cend()));
 	}
 	setName();
 }
@@ -185,11 +185,11 @@ void AddressItem::stateChange(ContainerState state)
 
 void AddressItem::setIdType()
 {
-	if (!ui->key.dec_key) return;
-	if (ui->key.dec_key->isPKI()) {
-		const libcdoc::LockPKI *pki = (const libcdoc::LockPKI *)ui->key.dec_key;
-		if (ui->key.dec_key->isCertificate()) {
-			const libcdoc::LockCert *ckd = (const libcdoc::LockCert *) ui->key.dec_key;
+	if (!ui->key.lock.isValid()) return;
+	if (ui->key.lock.isPKI()) {
+		if (ui->key.lock.isCertificate()) {
+			std::vector<uint8_t> cc = ui->key.lock.getBytes(libcdoc::Lock::Params::CERT);
+			QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(cc.data()), cc.size()), QSsl::Der);
             ui->idType->setHidden(false);
             QString str;
             SslCertificate cert(ckd->cert);
@@ -244,10 +244,9 @@ void AddressItem::setIdType()
             ui->idType->setHidden(false);
             ui->idType->setText(type + " public key");
         }
-    } else if (ui->key->isSymmetric()) {
-        std::shared_ptr<libcdoc::CKeySymmetric> ckd = std::static_pointer_cast<libcdoc::CKeySymmetric>(ui->key.dec_key);
+ 	} else if ((ui->key.lock.type == libcdoc::Lock::Type::SYMMETRIC_KEY || ui->key.lock.type == libcdoc::Lock::Type::PASSWORD)) {
         ui->idType->setHidden(false);
-        if (ckd->kdf_iter > 0) {
+        if (ui->key.lock.type == libcdoc::Lock::Type::PASSWORD) {
             ui->idType->setText("Password derived key");
         } else {
             ui->idType->setText("Symmetric key");

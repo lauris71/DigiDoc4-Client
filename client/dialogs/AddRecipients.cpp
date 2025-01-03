@@ -112,8 +112,8 @@ void AddRecipients::addAllRecipientToRightPane()
 			continue;
 		addRecipientToRightPane(value);
 		auto key = value->getKey();
-		if (key.enc_key.isCertificate()) {
-			QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(key.enc_key.cert.data()), key.enc_key.cert.size()));
+		if (key.rcpt.isCertificate()) {
+			QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(key.rcpt.cert.data()), key.rcpt.cert.size()));
 			history.append(kcert);
 		}
 	}
@@ -179,7 +179,8 @@ AddressItem * AddRecipients::addRecipientToLeftPane(const QSslCertificate& cert)
 	std::vector<uint8_t> sder = std::vector<uint8_t>(qder.cbegin(), qder.cend());
 	CDKey key = {
 		libcdoc::Recipient::makeCertificate(CryptoDoc::labelFromCertificate(sder), sder),
-		{}
+        {},
+        cert
 	};
 	leftItem = new AddressItem(key, ui->leftPane);
 	leftList.insert(cert, leftItem);
@@ -191,7 +192,7 @@ AddressItem * AddRecipients::addRecipientToLeftPane(const QSslCertificate& cert)
 
 	bool contains = false;
 	for (auto k: rightList) {
-		if (k.enc_key.isTheSameRecipient(other_key)) {
+		if (k.rcpt.isTheSameRecipient(other_key)) {
 			contains = true;
 			break;
 		}
@@ -211,13 +212,13 @@ AddressItem * AddRecipients::addRecipientToLeftPane(const QSslCertificate& cert)
 
 bool AddRecipients::addRecipientToRightPane(const CDKey& key, bool update)
 {
-	for (auto k: rightList) {
-		if (k.enc_key.isTheSameRecipient(key.enc_key)) return false;
+    for (auto& k: rightList) {
+		if (k.rcpt.isTheSameRecipient(key.rcpt)) return false;
 	}
 
 	if(update) {
-		if (key.enc_key.isCertificate()) {
-			QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(key.enc_key.cert.data()), key.enc_key.cert.size()), QSsl::Der);
+		if (key.rcpt.isCertificate()) {
+			QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(key.rcpt.cert.data()), key.rcpt.cert.size()), QSsl::Der);
 			if(auto expiryDate = kcert.expiryDate(); expiryDate <= QDateTime::currentDateTime())
 			{
 				if(Settings::CDOC2_DEFAULT && Settings::CDOC2_USE_KEYSERVER)
@@ -256,8 +257,8 @@ bool AddRecipients::addRecipientToRightPane(const CDKey& key, bool update)
 	connect(rightItem, &AddressItem::remove, this, &AddRecipients::removeRecipientFromRightPane);
 	ui->rightPane->addWidget(rightItem);
 	ui->confirm->setDisabled(rightList.isEmpty());
-	if (key.enc_key.isCertificate()) {
-		QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(key.enc_key.cert.data()), key.enc_key.cert.size()));
+	if (key.rcpt.isCertificate()) {
+		QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(key.rcpt.cert.data()), key.rcpt.cert.size()));
 		historyCertData.addAndSave({kcert});
 	}
 	return true;
@@ -314,8 +315,8 @@ void AddRecipients::removeRecipientFromRightPane(Item *toRemove)
 {
 	auto *rightItem = qobject_cast<AddressItem*>(toRemove);
 	const CDKey& key = rightItem->getKey();
-	if (key.enc_key.isCertificate()) {
-		QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(key.enc_key.cert.data()), key.enc_key.cert.size()), QSsl::Der);
+	if (key.rcpt.isCertificate()) {
+		QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(key.rcpt.cert.data()), key.rcpt.cert.size()), QSsl::Der);
 		if(auto it = leftList.find(kcert); it != leftList.end())
 		{
 			it.value()->setDisabled(false);

@@ -20,7 +20,6 @@
 #pragma once
 
 #include "common_enums.h"
-#include "CDocSupport.h"
 #include "DocumentModel.h"
 
 #include <QtCore/QIODevice>
@@ -31,13 +30,14 @@
 #include <libcdoc/Lock.h>
 #include <libcdoc/Recipient.h>
 
-#include <memory>
-
 class QSslKey;
 
 struct CDKey {
-	libcdoc::Recipient enc_key;
-	libcdoc::Lock dec_key;
+    // fixme:
+    // Remove all this Recipient stuff and keep only QSslCertificate here
+    libcdoc::Recipient rcpt;
+    libcdoc::Lock lock;
+    QSslCertificate rcpt_cert;
 	bool operator== (const CDKey& rhs) const = default;
 };
 
@@ -49,7 +49,7 @@ public:
 	~CryptoDoc() final;
 
 	bool supportsSymmetricKeys() const;
-	bool addEncryptionKey(const libcdoc::Recipient& key );
+    bool addEncryptionKey(const QSslCertificate& cert);
 	bool canDecrypt(const QSslCertificate &cert);
 	void clear(const QString &file = {});
 	bool decrypt(const libcdoc::Lock *lock, const QByteArray& secret);

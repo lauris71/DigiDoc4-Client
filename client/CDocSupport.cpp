@@ -131,11 +131,11 @@ request(const QString &keyserver_id, const QString &transaction_id = {}) {
 std::string
 DDConfiguration::getValue(const std::string_view& param)
 {
-	if (param == libcdoc::Configuration::USE_KEYSERVER) {
-		return (Settings::CDOC2_USE_KEYSERVER) ? "true" : "false";
-    } else if (param == libcdoc::Configuration::KEYSERVER_ID) {
-        return Settings::CDOC2_DEFAULT_KEYSERVER;
-    }
+//	if (param == libcdoc::Configuration::USE_KEYSERVER) {
+//		return (Settings::CDOC2_USE_KEYSERVER) ? "true" : "false";
+//    } else if (param == libcdoc::Configuration::KEYSERVER_ID) {
+//        return Settings::CDOC2_DEFAULT_KEYSERVER;
+//    }
 	return {};
 }
 
@@ -256,10 +256,10 @@ TempListConsumer::~TempListConsumer()
 int64_t
 TempListConsumer::write(const uint8_t *src, size_t size)
 {
-	if (files.empty()) return OUTPUT_ERROR;
+    if (files.empty()) return libcdoc::OUTPUT_ERROR;
 	IOEntry& file = files.back();
-	if (!file.data->isWritable()) return OUTPUT_ERROR;
-	if (file.data->write((const char *) src, size) != size) return OUTPUT_STREAM_ERROR;
+    if (!file.data->isWritable()) return libcdoc::OUTPUT_ERROR;
+    if (file.data->write((const char *) src, size) != size) return libcdoc::OUTPUT_STREAM_ERROR;
 	file.size += size;
 	return size;
 }
@@ -267,9 +267,9 @@ TempListConsumer::write(const uint8_t *src, size_t size)
 int
 TempListConsumer::close()
 {
-	if (files.empty()) return OUTPUT_ERROR;
+    if (files.empty()) return libcdoc::OUTPUT_ERROR;
 	IOEntry& file = files.back();
-	if (!file.data->isWritable()) return OUTPUT_ERROR;
+    if (!file.data->isWritable()) return libcdoc::OUTPUT_ERROR;
 	return libcdoc::OK;
 }
 

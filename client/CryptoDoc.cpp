@@ -21,6 +21,7 @@
 
 #include "Application.h"
 #include "Crypto.h"
+#include "CDocSupport.h"
 #include "TokenData.h"
 #include "QCryptoBackend.h"
 #include "QSigner.h"
@@ -122,7 +123,7 @@ public:
 	DDNetworkBackend network;
 
 	std::vector<IOEntry> files;
-	std::vector<CDKey> keys;
+    std::vector<CDKey> keys;
 
 	const std::vector<IOEntry> &getFiles() {
 		return files;
@@ -134,12 +135,13 @@ public:
 			return nullptr;
 		}
 		keys.clear();
-		for (auto key : r->getLocks()) {
-			keys.push_back({{}, key});
+        for (auto& key : r->getLocks()) {
+            keys.push_back({{}, key, QSslCertificate()});
 		}
 		return std::unique_ptr<libcdoc::CDocReader>(r);
 	}
 private:
+    bool encrypt();
 };
 
 bool CryptoDoc::Private::warnIfNotWritable() const
@@ -169,33 +171,56 @@ void CryptoDoc::Private::run()
 			reader.reset();
 		}
 	} else {
-		qCDebug(CRYPTO) << "Encrypt" << fileName;
-		libcdoc::OStreamConsumer ofs(fileName.toStdString());
-		if (ofs.isError()) return;
-		StreamListSource slsrc(files);
-		std::vector<libcdoc::Recipient> enc_keys;
-		for (auto& cdkey : keys) {
-			enc_keys.push_back(cdkey.enc_key);
-		}
-		if (!crypto.secret.empty()) {
-			auto key = libcdoc::Recipient::makeSymmetric(label.toStdString(), kdf_iter);
-			enc_keys.push_back(key);
-		}
-
-		libcdoc::CDocWriter *writer = libcdoc::CDocWriter::createWriter(Settings::CDOC2_DEFAULT ? 2 : 1, &ofs, false, &conf, &crypto, &network);
-
-		if (writer->encrypt(slsrc, enc_keys) == libcdoc::OK) {
-			delete writer;
-			ofs.close();
+        if (encrypt()) {
 			// Encryption successful, open new reader
 			reader = createCDocReader(fileName.toStdString());
 			if (!reader) return;
-		} else {
-			writer_last_error = writer->getLastErrorStr();
-			delete writer;
-			std::filesystem::remove(std::filesystem::path(fileName.toStdString()));
 		}
 	}
+}
+
+bool
+CryptoDoc::Private::encrypt()
+{
+    qCDebug(CRYPTO) << "Encrypt" << fileName;
+
+    std::string keyserver_id;
+    if (Settings::CDOC2_USE_KEYSERVER) {
+        keyserver_id = Settings::CDOC2_DEFAULT_KEYSERVER;
+    }
+
+    libcdoc::OStreamConsumer ofs(fileName.toStdString());
+    if (ofs.isError()) return false;
+    StreamListSource slsrc(files);
+    std::vector<libcdoc::Recipient> enc_keys;
+    for (auto& key : keys) {
+        if (!key.rcpt_cert.isNull()) {
+            QByteArray qder = key.rcpt_cert.toDer();
+            std::vector<uint8_t> cder = std::vector<uint8_t>(qder.cbegin(), qder.cend());
+            std::string label = CryptoDoc::labelFromCertificate(cder);
+            QSslKey qkey = key.rcpt_cert.publicKey();
+            qder = Crypto::toPublicKeyDer(qkey);
+            std::vector<uint8_t> kder(qder.cbegin(), qder.cend());
+            libcdoc::Recipient::PKType pk_type = (qkey.algorithm() == QSsl::KeyAlgorithm::Rsa) ? libcdoc::Recipient::PKType::RSA : libcdoc::Recipient::PKType::ECC;
+            enc_keys.push_back(libcdoc::Recipient::makeServer(label, kder, pk_type, keyserver_id));
+        } else {
+            enc_keys.push_back(key.rcpt);
+        }
+    }
+    if (!crypto.secret.empty()) {
+        auto key = libcdoc::Recipient::makeSymmetric(label.toStdString(), kdf_iter);
+        enc_keys.push_back(key);
+    }
+
+    libcdoc::CDocWriter *writer = libcdoc::CDocWriter::createWriter(Settings::CDOC2_DEFAULT ? 2 : 1, &ofs, false, &conf, &crypto, &network);
+    int result = writer->encrypt(slsrc, enc_keys);
+    if (result != libcdoc::OK) {
+        writer_last_error = writer->getLastErrorStr();
+        std::filesystem::remove(std::filesystem::path(fileName.toStdString()));
+    }
+    delete writer;
+    ofs.close();
+    return (result == libcdoc::OK);
 }
 
 CDocumentModel::CDocumentModel(CryptoDoc::Private *doc)
@@ -336,17 +361,22 @@ CryptoDoc::supportsSymmetricKeys() const
 	return !d->reader && Settings::CDOC2_DEFAULT;
 }
 
-bool CryptoDoc::addEncryptionKey(const libcdoc::Recipient& key )
+bool CryptoDoc::addEncryptionKey(const QSslCertificate& cert )
 {
-	if(d->warnIfNotWritable())
+    if(d->warnIfNotWritable()) {
 		return false;
+    }
+    QSslKey qkey = cert.publicKey();
+    QByteArray qder = qkey.toDer();
+    std::vector<uint8_t> der(qder.cbegin(), qder.cend());
 	for (auto& k : d->keys) {
-		if (k.enc_key.isTheSameRecipient(key)) {
-			WarningDialog::show(tr("Key already exists"));
+        if (k.rcpt.isTheSameRecipient(der)) {
+            WarningDialog::show(tr("Recipient with the same key already exists"));
 			return false;
 		}
 	}
-	d->keys.push_back({key, {}});
+    libcdoc::Recipient rcpt = libcdoc::Recipient::makeCertificate(CryptoDoc::labelFromCertificate(der), der);
+    d->keys.push_back({rcpt, {}, cert});
 	return true;
 }
 

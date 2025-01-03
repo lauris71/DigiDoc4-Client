@@ -49,14 +49,14 @@ KeyDialog::KeyDialog(const CDKey &k, QWidget *parent )
 	d->view->setHeaderLabels({tr("Attribute"), tr("Value")});
 
 	connect(d->close, &QPushButton::clicked, this, &KeyDialog::accept);
-	if (k.enc_key.isCertificate()) {
-		QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(k.enc_key.cert.data()), k.enc_key.cert.size()), QSsl::Der);
+	if (k.rcpt.isCertificate()) {
+		QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(k.rcpt.cert.data()), k.rcpt.cert.size()), QSsl::Der);
 		connect(d->showCert, &QPushButton::clicked, this, [this, cert=kcert] {
 			CertificateDetails::showCertificate(cert, this);
 		});
 		d->showCert->setHidden(kcert.isNull());
-	} else if (k.dec_key.isCertificate()) {
-		std::vector<uint8_t> cert = k.dec_key.getBytes(libcdoc::Lock::Params::CERT);
+	} else if (k.lock.isCertificate()) {
+		std::vector<uint8_t> cert = k.lock.getBytes(libcdoc::Lock::Params::CERT);
 			QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(cert.data()), cert.size()), QSsl::Der);
 			connect(d->showCert, &QPushButton::clicked, this, [this, c=kcert] {
 				CertificateDetails::showCertificate(c, this);
@@ -85,25 +85,25 @@ KeyDialog::KeyDialog(const CDKey &k, QWidget *parent )
 	};
 
 	bool adjust_size = false;
-	if (k.dec_key.isCDoc1()) {
-		std::vector<uint8_t> cert = k.dec_key.getBytes(libcdoc::Lock::Params::CERT);
-		std::string cdigest = k.dec_key.getString(libcdoc::Lock::Params::CONCAT_DIGEST);
+	if (k.lock.isCDoc1()) {
+		std::vector<uint8_t> cert = k.lock.getBytes(libcdoc::Lock::Params::CERT);
+		std::string cdigest = k.lock.getString(libcdoc::Lock::Params::CONCAT_DIGEST);
 		QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(cert.data()), cert.size()), QSsl::Der);
-		addItemStr(tr("Recipient"), k.dec_key.label);
-		addItem(tr("Crypto method"), QString::fromStdString(k.dec_key.getString(libcdoc::Lock::Params::METHOD)));
+		addItemStr(tr("Recipient"), k.lock.label);
+		addItem(tr("Crypto method"), QString::fromStdString(k.lock.getString(libcdoc::Lock::Params::METHOD)));
 		addItem(tr("ConcatKDF digest method"), QString::fromStdString(cdigest));
 		addItem(tr("Expiry date"), kcert.expiryDate().toLocalTime().toString(QStringLiteral("dd.MM.yyyy hh:mm:ss")));
 		addItem(tr("Issuer"), SslCertificate(kcert).issuerInfo(QSslCertificate::CommonName));
 		adjust_size = !cdigest.empty();
 	}
-	if (k.enc_key.type != libcdoc::Recipient::Type::NONE) {
-		addItemStr(tr("Label"), k.enc_key.label);
+	if (k.rcpt.type != libcdoc::Recipient::Type::NONE) {
+		addItemStr(tr("Label"), k.rcpt.label);
 	} else {
-		addItemStr(tr("Label"), k.dec_key.label);
+		addItemStr(tr("Label"), k.lock.label);
 	}
-	if (k.dec_key.type == libcdoc::Lock::SERVER) {
-		addItem(tr("Key server ID"), QString::fromUtf8(k.dec_key.getString(libcdoc::Lock::Params::KEYSERVER_ID)));
-		addItem(tr("Transaction ID"), QString::fromUtf8(k.dec_key.getString(libcdoc::Lock::Params::TRANSACTION_ID)));
+	if (k.lock.type == libcdoc::Lock::SERVER) {
+		addItem(tr("Key server ID"), QString::fromUtf8(k.lock.getString(libcdoc::Lock::Params::KEYSERVER_ID)));
+		addItem(tr("Transaction ID"), QString::fromUtf8(k.lock.getString(libcdoc::Lock::Params::TRANSACTION_ID)));
 	}
 	d->view->resizeColumnToContents( 0 );
 	if(adjust_size) adjustSize();

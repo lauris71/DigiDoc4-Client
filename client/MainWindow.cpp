@@ -544,9 +544,10 @@ void MainWindow::convertToCDoc()
 
 	auto cardData = qApp->signer()->tokenauth();
 	if(!cardData.cert().isNull()) {
-		QByteArray qder = cardData.cert().toDer();
-		std::vector<uint8_t> sder = std::vector<uint8_t>(qder.cbegin(), qder.cend());
-		cryptoContainer->addEncryptionKey(libcdoc::Recipient::makeCertificate(CryptoDoc::labelFromCertificate(sder), sder));
+        //QByteArray qder = cardData.cert().toDer();
+        //st7d::vector<uint8_t> sder = std::vector<uint8_t>(qder.cbegin(), qder.cend());
+        //cryptoContainer->addEncryptionKey(libcdoc::Recipient::makeCertificate(CryptoDoc::labelFromCertificate(sder), sder));
+        cryptoContainer->addEncryptionKey(cardData.cert());
 	}
 
 	resetCryptoDoc(cryptoContainer.release());
@@ -1171,8 +1172,10 @@ void MainWindow::updateKeys(const QList<CDKey> &keys)
 
 	for(auto i = cryptoDoc->keys().size(); i != 0; i--)
 		cryptoDoc->removeKey(i - 1);
-	for(const auto &key: keys)
-		cryptoDoc->addEncryptionKey(key.enc_key);
+    for(const auto &key: keys) {
+        // fixme: Re-think how other recipient types are handled
+        cryptoDoc->addEncryptionKey(key.rcpt_cert);
+    }
 	ui->cryptoContainerPage->update(cryptoDoc->canDecrypt(qApp->signer()->tokenauth().cert()), cryptoDoc);
 }
 

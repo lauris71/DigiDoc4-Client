@@ -41,7 +41,7 @@
 #include "CDocSupport.h"
 
 int
-DDCryptoBackend::decryptRSA(std::vector<uint8_t>& result, const std::vector<uint8_t> &data, bool oaep, const std::string& label)
+DDCryptoBackend::decryptRSA(std::vector<uint8_t>& result, const std::vector<uint8_t> &data, bool oaep, unsigned int idx)
 {
 	QByteArray qdata(reinterpret_cast<const char *>(data.data()), data.size());
 	QByteArray qkek = qApp->signer()->decrypt([&qdata, &oaep](QCryptoBackend *backend) {
@@ -60,7 +60,7 @@ const QHash<QString, QCryptographicHash::Algorithm> SHA_MTH{
 
 int
 DDCryptoBackend::deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::string &digest,
-								 const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo, const std::string& label)
+                                 const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo, unsigned int idx)
 {
 	QByteArray decryptedKey = qApp->signer()->decrypt([&publicKey, &digest, &algorithmID, &partyUInfo, &partyVInfo](QCryptoBackend *backend) {
 			QByteArray ba(reinterpret_cast<const char *>(publicKey.data()), publicKey.size());
@@ -75,8 +75,7 @@ DDCryptoBackend::deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<ui
 }
 
 int
-DDCryptoBackend::deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &key_material, const std::vector<uint8_t> &salt,
-								   const std::string& label)
+DDCryptoBackend::deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &key_material, const std::vector<uint8_t> &salt, unsigned int idx)
 {
 	QByteArray qkey_material(reinterpret_cast<const char *>(key_material.data()), key_material.size());
 	QByteArray qsalt(reinterpret_cast<const char *>(salt.data()), salt.size());
@@ -88,7 +87,7 @@ DDCryptoBackend::deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<
 }
 
 int
-DDCryptoBackend::getSecret(std::vector<uint8_t>& _secret, const std::string& _label)
+DDCryptoBackend::getSecret(std::vector<uint8_t>& _secret, unsigned int idx)
 {
 	_secret = secret;
 	return libcdoc::OK;

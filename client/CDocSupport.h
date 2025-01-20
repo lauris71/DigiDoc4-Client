@@ -35,14 +35,12 @@ struct DDConfiguration : public libcdoc::Configuration {
 };
 
 struct DDCryptoBackend : public libcdoc::CryptoBackend {
-	int decryptRSA(std::vector<uint8_t>& result, const std::vector<uint8_t> &data, bool oaep, const std::string& label) override final;
+    int decryptRSA(std::vector<uint8_t>& result, const std::vector<uint8_t> &data, bool oaep, unsigned int idx) override final;
 	int deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::string &digest,
 						const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo,
-						const std::string& label) override final;
-	int deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::vector<uint8_t> &salt, const std::string& label) override final;
-	int getSecret(std::vector<uint8_t>& secret, const std::string& label) override final;
-
-    int sign(std::vector<uint8_t>& dst, HashAlgorithm algorithm, const std::vector<uint8_t> &digest, const std::string& label) override { return libcdoc::NOT_IMPLEMENTED; }
+                        unsigned int idx) override final;
+    int deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::vector<uint8_t> &salt, unsigned int idx) override final;
+    int getSecret(std::vector<uint8_t>& secret, unsigned int idx) override final;
 
 	std::vector<uint8_t> secret;
 
@@ -57,7 +55,7 @@ struct DDNetworkBackend : public libcdoc::NetworkBackend, private QObject {
     int fetchKey(std::vector<uint8_t>& result, const std::string& keyserver_id, const std::string& transaction_id) override final;
 
     int getClientTLSCertificate(std::vector<uint8_t>& dst) override final { return libcdoc::NOT_IMPLEMENTED; }
-    int getPeerTLSCerticates(std::vector<std::vector<uint8_t>> &dst) override final { return libcdoc::NOT_IMPLEMENTED; }
+    int getPeerTLSCertificates(std::vector<std::vector<uint8_t>> &dst) override final { return libcdoc::NOT_IMPLEMENTED; }
 
     explicit DDNetworkBackend() = default;
 

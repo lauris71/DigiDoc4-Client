@@ -185,26 +185,33 @@ CryptoDoc::Private::encrypt()
 {
     qCDebug(CRYPTO) << "Encrypt" << fileName;
 
-    std::string keyserver_id;
-    if (Settings::CDOC2_USE_KEYSERVER) {
-        keyserver_id = Settings::CDOC2_DEFAULT_KEYSERVER;
-    }
-
     libcdoc::OStreamConsumer ofs(fileName.toStdString());
     if (ofs.isError()) return false;
+
     StreamListSource slsrc(files);
     std::vector<libcdoc::Recipient> enc_keys;
-    for (auto& key : keys) {
-        if (!key.rcpt_cert.isNull()) {
-            QByteArray qder = key.rcpt_cert.toDer();
-            std::vector<uint8_t> cder = std::vector<uint8_t>(qder.cbegin(), qder.cend());
-            std::string label = CryptoDoc::labelFromCertificate(cder);
-            QSslKey qkey = key.rcpt_cert.publicKey();
-            qder = Crypto::toPublicKeyDer(qkey);
-            std::vector<uint8_t> kder(qder.cbegin(), qder.cend());
-            libcdoc::Recipient::PKType pk_type = (qkey.algorithm() == QSsl::KeyAlgorithm::Rsa) ? libcdoc::Recipient::PKType::RSA : libcdoc::Recipient::PKType::ECC;
-            enc_keys.push_back(libcdoc::Recipient::makeServer(label, kder, pk_type, keyserver_id));
-        } else {
+
+    if (Settings::CDOC2_DEFAULT) {
+        std::string keyserver_id;
+        if (Settings::CDOC2_USE_KEYSERVER) {
+            keyserver_id = Settings::CDOC2_DEFAULT_KEYSERVER;
+        }
+        for (auto& key : keys) {
+            if (!key.rcpt_cert.isNull()) {
+                QByteArray qder = key.rcpt_cert.toDer();
+                std::vector<uint8_t> cder = std::vector<uint8_t>(qder.cbegin(), qder.cend());
+                std::string label = CryptoDoc::labelFromCertificate(cder);
+                QSslKey qkey = key.rcpt_cert.publicKey();
+                qder = Crypto::toPublicKeyDer(qkey);
+                std::vector<uint8_t> kder(qder.cbegin(), qder.cend());
+                libcdoc::Recipient::PKType pk_type = (qkey.algorithm() == QSsl::KeyAlgorithm::Rsa) ? libcdoc::Recipient::PKType::RSA : libcdoc::Recipient::PKType::ECC;
+                enc_keys.push_back(libcdoc::Recipient::makeServer(label, kder, pk_type, keyserver_id));
+            } else {
+                enc_keys.push_back(key.rcpt);
+            }
+        }
+    } else {
+        for (auto& key : keys) {
             enc_keys.push_back(key.rcpt);
         }
     }
@@ -376,6 +383,8 @@ bool CryptoDoc::addEncryptionKey(const QSslCertificate& cert )
 			return false;
 		}
 	}
+    qder = cert.toDer();
+    der.assign(qder.cbegin(), qder.cend());
     libcdoc::Recipient rcpt = libcdoc::Recipient::makeCertificate(CryptoDoc::labelFromCertificate(der), der);
     d->keys.push_back({rcpt, {}, cert});
 	return true;
@@ -418,7 +427,7 @@ CryptoDoc::decrypt(const libcdoc::Lock *lock, const QByteArray& secret)
     if(!d->reader) return true;
 
     int lock_idx = -1;
-    const std::vector<const libcdoc::Lock> locks = d->reader->getLocks();
+    const std::vector<libcdoc::Lock> locks = d->reader->getLocks();
 	if (lock == nullptr) {
 		QByteArray der = qApp->signer()->tokenauth().cert().toDer();
         lock_idx = d->reader->getLockForCert(std::vector<uint8_t>(der.cbegin(), der.cend()));

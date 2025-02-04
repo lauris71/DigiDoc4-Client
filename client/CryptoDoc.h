@@ -25,10 +25,10 @@
 #include <QtCore/QIODevice>
 #include <QtNetwork/QSslCertificate>
 
-#include <libcdoc/CDoc.h>
-#include <libcdoc/Certificate.h>
-#include <libcdoc/Lock.h>
-#include <libcdoc/Recipient.h>
+#include <cdoc/CDoc.h>
+#include <cdoc/Certificate.h>
+#include <cdoc/Lock.h>
+#include <cdoc/Recipient.h>
 
 class QSslKey;
 

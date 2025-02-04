@@ -22,10 +22,10 @@
 
 #include <QtCore/QObject>
 
-#include <libcdoc/Configuration.h>
-#include <libcdoc/CryptoBackend.h>
-#include <libcdoc/NetworkBackend.h>
-#include <libcdoc/Io.h>
+#include <cdoc/Configuration.h>
+#include <cdoc/CryptoBackend.h>
+#include <cdoc/NetworkBackend.h>
+#include <cdoc/Io.h>
 
 struct DDConfiguration : public libcdoc::Configuration {
     std::string getValue(const std::string_view& param) final;

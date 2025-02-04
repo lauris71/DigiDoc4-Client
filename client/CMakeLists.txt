@@ -22,6 +22,8 @@ else()
 	)
 endif()
 
+add_subdirectory(libcdoc)
+
 file(GLOB WIDGETS CONFIGURE_DEPENDS
 	"dialogs/*.cpp" "dialogs/*.h" "dialogs/*.ui"
 	"effects/*.cpp" "effects/*.h" "effects/*.ui"
@@ -88,8 +90,8 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
 	TokenData.cpp
 	TokenData.h
 	Utils.h
-        dialogs/PasswordDialog.h dialogs/PasswordDialog.cpp dialogs/PasswordDialog.ui
-        CDocSupport.cpp CDocSupport.h
+	dialogs/PasswordDialog.h dialogs/PasswordDialog.cpp dialogs/PasswordDialog.ui
+	CDocSupport.cpp CDocSupport.h
 )
 qt_add_translations(${PROJECT_NAME} TS_FILES
 	translations/en.ts
@@ -113,8 +115,8 @@ target_link_libraries(${PROJECT_NAME}
 	${LDAP_LIBRARIES}
 	$<TARGET_NAME_IF_EXISTS:flatbuffers::flatbuffers>
 	$<TARGET_NAME_IF_EXISTS:flatbuffers::flatbuffers_shared>
-	${LIBCDOC_LIBRARIES}
-        ${LIBXML2_LIBRARIES}
+	cdoc_static
+	${LIBXML2_LIBRARIES}
 	ZLIB::ZLIB
 )
 
@@ -132,8 +134,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}
     ${CMAKE_BUILD_RPATH}
-    ${LIBDIGIDOCPP_INCLUDE_DIR}
-    ${LIBCDOC_INCLUDE_DIR}
+	${LIBDIGIDOCPP_INCLUDE_DIR}
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE

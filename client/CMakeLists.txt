@@ -17,8 +17,7 @@ else()
 	set(TSL_QRC ${CMAKE_CURRENT_BINARY_DIR}/TSL.qrc)
 endif()
 
-set(LIBCDOC_LIBRARIES ${CMAKE_CURRENT_SOURCE_DIR}/libcdoc/build/libcdoc/libcdoc_staticd.a)
-set(LIBCDOC_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libcdoc)
+add_subdirectory(libcdoc)
 
 configure_file( translations/tr.qrc tr.qrc COPYONLY )
 qt_add_translation(SOURCES translations/en.ts translations/et.ts translations/ru.ts)
@@ -91,8 +90,8 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
 	TokenData.cpp
 	TokenData.h
 	Utils.h
-        dialogs/PasswordDialog.h dialogs/PasswordDialog.cpp dialogs/PasswordDialog.ui
-        CDocSupport.cpp CDocSupport.h
+	dialogs/PasswordDialog.h dialogs/PasswordDialog.cpp dialogs/PasswordDialog.ui
+	CDocSupport.cpp CDocSupport.h
 )
 
 target_link_libraries(${PROJECT_NAME}
@@ -103,8 +102,8 @@ target_link_libraries(${PROJECT_NAME}
 	${LDAP_LIBRARIES}
 	$<TARGET_NAME_IF_EXISTS:flatbuffers::flatbuffers>
 	$<TARGET_NAME_IF_EXISTS:flatbuffers::flatbuffers_shared>
-	${LIBCDOC_LIBRARIES}
-        ${LIBXML2_LIBRARIES}
+	cdoc_static
+	${LIBXML2_LIBRARIES}
 	ZLIB::ZLIB
 )
 
@@ -127,8 +126,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}
     ${CMAKE_BUILD_RPATH}
-    ${LIBDIGIDOCPP_INCLUDE_DIR}
-    ${LIBCDOC_INCLUDE_DIR}
+	${LIBDIGIDOCPP_INCLUDE_DIR}
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE

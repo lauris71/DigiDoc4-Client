@@ -387,6 +387,7 @@ void ContainerPage::update(CryptoDoc* container, const QSslCertificate &cert)
 {
 	isSupported = container->canDecrypt(cert) || container->state() & UnencryptedContainer;
 	hasEmptyFile = false;
+<<<<<<< HEAD
 	bool hasUnsupported = false;
     ui->rightPane->clear();
     for(auto& key: container->keys()) {
@@ -399,6 +400,14 @@ void ContainerPage::update(CryptoDoc* container, const QSslCertificate &cert)
 		emit warning({UnsupportedCDocWarning});
 	if(container->state() & EncryptedContainer)
 		updateDecryptionButton();
+=======
+	ui->rightPane->clear();
+	for(auto& key: container->keys()) {
+		AddressItem *addr = new AddressItem(key, ui->rightPane, true);
+		connect(addr, &AddressItem::decrypt, this, [this, key]{emit decryptReq(&key.lock);});
+		ui->rightPane->addWidget(addr);
+	}
+>>>>>>> 12be0c35a8dbde335673f0be1fb960fa0aa3cf60
 	if(container->state() & UnencryptedContainer)
 		showMainActionEncrypt(container->supportsSymmetricKeys());
 }

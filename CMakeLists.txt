@@ -11,7 +11,6 @@ set(CMAKE_AUTOMOC ON)
 include( GNUInstallDirs )
 include( VersionInfo )
 
-find_package(PKCS11)
 find_package(libdigidocpp 4.2.0 REQUIRED HINTS /Library)
 message("-- Found libdigidocpp: ${libdigidocpp_DIR} (found version \"${libdigidocpp_VERSION}\")")
 find_package( LDAP REQUIRED )

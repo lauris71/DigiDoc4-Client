@@ -156,6 +156,8 @@ MainWindow::MainWindow( QWidget *parent )
 
 	connect(ui->cryptoContainerPage, &ContainerPage::decryptReq, this, &MainWindow::decryptClicked);
 
+	connect(ui->cryptoContainerPage, &ContainerPage::decryptReq, this, &MainWindow::decryptClicked);
+
 	connect(ui->accordion, &Accordion::changePin1Clicked, this, &MainWindow::changePin1Clicked);
 	connect(ui->accordion, &Accordion::changePin2Clicked, this, &MainWindow::changePin2Clicked);
 	connect(ui->accordion, &Accordion::changePukClicked, this, &MainWindow::changePukClicked);
@@ -258,6 +260,8 @@ void MainWindow::decrypt(const libcdoc::Lock *lock)
 
 	if (cryptoDoc->decrypt(lock, secret)) {
 		ui->cryptoContainerPage->transition(cryptoDoc, qApp->signer()->tokenauth().cert());
+		auto *notification = new FadeInNotification(this, WHITE, MANTIS, 110);
+		notification->start( tr("Decryption succeeded!"), 750, 3000, 1200 );
 	}
 }
 

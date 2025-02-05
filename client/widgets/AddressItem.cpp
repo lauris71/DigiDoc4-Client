@@ -70,6 +70,13 @@ AddressItem::AddressItem(const CDKey& key, QWidget *parent, bool showIcon)
         ui->label = key->label;
 	}
 
+	if (key.lock.isSymmetric()) {
+		ui->decrypt->show();
+		connect(ui->decrypt, &QToolButton::clicked, this, [this]{ emit decrypt(&ui->key.lock);});
+	} else {
+		ui->decrypt->hide();
+	}
+
 	ui->add->setFont(Styles::font(Styles::Condensed, 12));
 	ui->added->setFont(ui->add->font());
 
@@ -122,6 +129,19 @@ void AddressItem::changeEvent(QEvent* event)
 	QWidget::changeEvent(event);
 }
 
+<<<<<<< HEAD
+=======
+bool AddressItem::eventFilter(QObject *o, QEvent *e)
+{
+	if((o == ui->name || o == ui->idType) && e->type() == QEvent::MouseButtonRelease)
+	{
+		(new KeyDialog(ui->key, this))->open();
+		return true;
+	}
+	return Item::eventFilter(o, e);
+}
+
+>>>>>>> 12be0c35a8dbde335673f0be1fb960fa0aa3cf60
 const CDKey& AddressItem::getKey() const
 {
 	return ui->key;
@@ -165,10 +185,16 @@ void AddressItem::mouseReleaseEvent(QMouseEvent * /*event*/)
 
 void AddressItem::setName()
 {
+<<<<<<< HEAD
 	ui->name->setText(QStringLiteral("%1 <span style=\"font-weight:normal;\">%2</span>")
 		.arg(ui->label.toHtmlEscaped(), (ui->yourself ? ui->code + tr(" (Yourself)") : ui->code).toHtmlEscaped()));
 	if(ui->name->text().isEmpty())
 		ui->name->hide();
+=======
+	QString str = QStringLiteral("%1 <span style=\"font-weight:normal;\">%2</span>").arg(ui->label, ui->yourself ? ui->code + tr(" (Yourself)") : ui->code);
+	qDebug() << "SetName:" << str;
+	ui->name->setText(str);
+>>>>>>> 12be0c35a8dbde335673f0be1fb960fa0aa3cf60
 }
 
 void AddressItem::showButton(ShowToolButton show)

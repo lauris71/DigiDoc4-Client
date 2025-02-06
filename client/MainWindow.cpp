@@ -156,8 +156,6 @@ MainWindow::MainWindow( QWidget *parent )
 
 	connect(ui->cryptoContainerPage, &ContainerPage::decryptReq, this, &MainWindow::decryptClicked);
 
-	connect(ui->cryptoContainerPage, &ContainerPage::decryptReq, this, &MainWindow::decryptClicked);
-
 	connect(ui->accordion, &Accordion::changePin1Clicked, this, &MainWindow::changePin1Clicked);
 	connect(ui->accordion, &Accordion::changePin2Clicked, this, &MainWindow::changePin2Clicked);
 	connect(ui->accordion, &Accordion::changePukClicked, this, &MainWindow::changePukClicked);
@@ -258,7 +256,12 @@ bool MainWindow::decrypt(const libcdoc::Lock *lock)
 
 	WaitDialogHolder waitDialog(this, tr("Decrypting"));
 
-    return cryptoDoc->decrypt(lock, secret);
+    if (cryptoDoc->decrypt(lock, secret)) {
+        ui->cryptoContainerPage->transition(cryptoDoc, qApp->signer()->tokenauth().cert());
+        FadeInNotification::success(ui->topBar, tr("Decryption succeeded!"));
+        return true;
+    }
+    return false;
 }
 
 void MainWindow::dragEnterEvent(QDragEnterEvent *event)

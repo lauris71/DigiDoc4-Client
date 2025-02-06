@@ -58,9 +58,6 @@ AddressItem::AddressItem(const CDKey& key, QWidget *parent, bool showIcon)
         ui->label = !ui->key.rcpt_cert.subjectInfo("GN").isEmpty() && !ui->key.rcpt_cert.subjectInfo("SN").isEmpty() ?
                         ui->key.rcpt_cert.subjectInfo("GN").join(' ') + ' ' + ui->key.rcpt_cert.subjectInfo("SN").join(' ') :
                         ui->key.rcpt_cert.subjectInfo("CN").join(' ');
-    } else if (!ui->key.rcpt.isEmpty()) {
-        // fixme: This should not happen
-        qDebug() << "Nonempty recipient but rcpt_cert is null";
     } else if (ui->key.lock.isValid()) {
         // Known lock type
         ui->code.clear();
@@ -116,9 +113,7 @@ void AddressItem::idChanged(const SslCertificate &cert)
 	QByteArray qder = cert.toDer();
 	std::vector<uint8_t> sder = std::vector<uint8_t>(qder.cbegin(), qder.cend());
 
-	if (!ui->key.rcpt.isEmpty()) {
-		ui->yourself = ui->key.rcpt.isTheSameRecipient(sder);
-	} else if (ui->key.lock.isValid()) {
+    if (ui->key.lock.isValid()) {
 		QSslKey pkey = cert.publicKey();
 		QByteArray der = pkey.toDer();
 		ui->yourself = ui->key.lock.hasTheSameKey(std::vector<uint8_t>(der.cbegin(), der.cend()));
@@ -199,9 +194,6 @@ void AddressItem::setIdType()
         // Recipient certificate
         SslCertificate cert(ui->key.rcpt_cert);
         setIdType(cert);
-    } else if (!ui->key.rcpt.isEmpty()) {
-        // fixme: This should not happen
-        qDebug() << "Nonempty recipient but rcpt_cert is null";
     } else if (ui->key.lock.isValid()) {
         // Known lock type
         // Needed to include translation for "ID-CARD"

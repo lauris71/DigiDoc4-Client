@@ -49,12 +49,11 @@ KeyDialog::KeyDialog(const CDKey &k, QWidget *parent )
 	d->view->setHeaderLabels({tr("Attribute"), tr("Value")});
 
 	connect(d->close, &QPushButton::clicked, this, &KeyDialog::accept);
-	if (k.rcpt.isCertificate()) {
-		QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(k.rcpt.cert.data()), k.rcpt.cert.size()), QSsl::Der);
-		connect(d->showCert, &QPushButton::clicked, this, [this, cert=kcert] {
+    if (!k.rcpt_cert.isNull()) {
+        connect(d->showCert, &QPushButton::clicked, this, [this, cert=k.rcpt_cert] {
 			CertificateDetails::showCertificate(cert, this);
 		});
-		d->showCert->setHidden(kcert.isNull());
+        d->showCert->setHidden(false);
 	} else if (k.lock.isCertificate()) {
 		std::vector<uint8_t> cert = k.lock.getBytes(libcdoc::Lock::Params::CERT);
 			QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(cert.data()), cert.size()), QSsl::Der);

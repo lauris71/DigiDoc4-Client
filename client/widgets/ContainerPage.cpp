@@ -317,7 +317,9 @@ void ContainerPage::transition(CryptoDoc *container, const QSslCertificate &cert
     for(auto& key: container->keys())
     {
         hasUnsupported = hasUnsupported || (key.rcpt_cert.isNull() && !key.lock.isValid());
-        ui->rightPane->addWidget(new AddressItem(key, ui->rightPane, true));
+        AddressItem *addr = new AddressItem(key, ui->rightPane, true);
+        ui->rightPane->addWidget(addr);
+        connect(addr, &AddressItem::decrypt, this, [this, key]{emit decryptReq(&key.lock);});
     }
     if(hasUnsupported)
         emit warning({UnsupportedCDocWarning});
@@ -392,7 +394,9 @@ void ContainerPage::update(CryptoDoc* container, const QSslCertificate &cert)
     for(auto& key: container->keys())
     {
         hasUnsupported = hasUnsupported || (key.rcpt_cert.isNull() && !key.lock.isValid());
-        ui->rightPane->addWidget(new AddressItem(key, ui->rightPane, true));
+        AddressItem *addr = new AddressItem(key, ui->rightPane, true);
+        ui->rightPane->addWidget(addr);
+        connect(addr, &AddressItem::decrypt, this, [this, key]{emit decryptReq(&key.lock);});
     }
     if(hasUnsupported)
         emit warning({UnsupportedCDocWarning});

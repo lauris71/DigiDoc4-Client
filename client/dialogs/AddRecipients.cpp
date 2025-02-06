@@ -112,9 +112,8 @@ void AddRecipients::addAllRecipientToRightPane()
 			continue;
 		addRecipientToRightPane(value);
 		auto key = value->getKey();
-		if (key.rcpt.isCertificate()) {
-			QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(key.rcpt.cert.data()), key.rcpt.cert.size()));
-			history.append(kcert);
+        if (!key.rcpt_cert.isNull()) {
+            history.append(key.rcpt_cert);
 		}
 	}
 	ui->confirm->setDisabled(rightList.isEmpty());
@@ -186,13 +185,9 @@ AddressItem * AddRecipients::addRecipientToLeftPane(const QSslCertificate& cert)
 	leftList.insert(cert, leftItem);
 	ui->leftPane->addWidget(leftItem);
 
-	QSslKey cert_key = cert.publicKey();
-	QByteArray der = Crypto::toPublicKeyDer(cert_key);
-	std::vector<uint8_t> other_key(der.cbegin(), der.cend());
-
 	bool contains = false;
-	for (auto k: rightList) {
-		if (k.rcpt.isTheSameRecipient(other_key)) {
+    for (auto rhs: rightList) {
+        if (rhs.rcpt_cert == cert) {
 			contains = true;
 			break;
 		}
@@ -212,43 +207,40 @@ AddressItem * AddRecipients::addRecipientToLeftPane(const QSslCertificate& cert)
 
 bool AddRecipients::addRecipientToRightPane(const CDKey& key, bool update)
 {
-    for (auto& k: rightList) {
-		if (k.rcpt.isTheSameRecipient(key.rcpt)) return false;
+    for (auto& rhs: rightList) {
+        if (key.rcpt_cert == rhs.rcpt_cert) return false;
 	}
 
 	if(update) {
-		if (key.rcpt.isCertificate()) {
-			QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(key.rcpt.cert.data()), key.rcpt.cert.size()), QSsl::Der);
-			if(auto expiryDate = kcert.expiryDate(); expiryDate <= QDateTime::currentDateTime())
-			{
-				if(Settings::CDOC2_DEFAULT && Settings::CDOC2_USE_KEYSERVER)
-				{
-					WarningDialog::show(this, tr("Failed to add certificate. An expired certificate cannot be used for encryption."));
-					return false;
-				}
-				auto *dlg = new WarningDialog(tr("Are you sure that you want use certificate for encrypting, which expired on %1?<br />"
-					"When decrypter has updated certificates then decrypting is impossible.")
-					.arg(expiryDate.toString(QStringLiteral("dd.MM.yyyy hh:mm:ss"))), this);
-				dlg->setCancelText(WarningDialog::NO);
-				dlg->addButton(WarningDialog::YES, QMessageBox::Yes);
-				if(dlg->exec() != QMessageBox::Yes)
-					return false;
-			}
-			QSslConfiguration backup = QSslConfiguration::defaultConfiguration();
-			QSslConfiguration::setDefaultConfiguration(CheckConnection::sslConfiguration());
-			QList<QSslError> errors = QSslCertificate::verify({ kcert });
-			QSslConfiguration::setDefaultConfiguration(backup);
-			errors.removeAll(QSslError(QSslError::CertificateExpired, kcert));
-			if(!errors.isEmpty())
-			{
-				auto *dlg = new WarningDialog(tr("Recipient’s certification chain contains certificates that are not trusted. Continue with encryption?"), this);
-				dlg->setCancelText(WarningDialog::NO);
-				dlg->addButton(WarningDialog::YES, QMessageBox::Yes);
-				if(dlg->exec() != QMessageBox::Yes)
-					return false;
-			}
-		}
-	}
+        if(auto expiryDate = key.rcpt_cert.expiryDate(); expiryDate <= QDateTime::currentDateTime())
+        {
+            if(Settings::CDOC2_DEFAULT && Settings::CDOC2_USE_KEYSERVER)
+            {
+                WarningDialog::show(this, tr("Failed to add certificate. An expired certificate cannot be used for encryption."));
+                return false;
+            }
+            auto *dlg = new WarningDialog(tr("Are you sure that you want use certificate for encrypting, which expired on %1?<br />"
+                                             "When decrypter has updated certificates then decrypting is impossible.")
+                                              .arg(expiryDate.toString(QStringLiteral("dd.MM.yyyy hh:mm:ss"))), this);
+            dlg->setCancelText(WarningDialog::NO);
+            dlg->addButton(WarningDialog::YES, QMessageBox::Yes);
+            if(dlg->exec() != QMessageBox::Yes)
+                return false;
+        }
+        QSslConfiguration backup = QSslConfiguration::defaultConfiguration();
+        QSslConfiguration::setDefaultConfiguration(CheckConnection::sslConfiguration());
+        QList<QSslError> errors = QSslCertificate::verify({ key.rcpt_cert });
+        QSslConfiguration::setDefaultConfiguration(backup);
+        errors.removeAll(QSslError(QSslError::CertificateExpired, key.rcpt_cert));
+        if(!errors.isEmpty())
+        {
+            auto *dlg = new WarningDialog(tr("Recipient’s certification chain contains certificates that are not trusted. Continue with encryption?"), this);
+            dlg->setCancelText(WarningDialog::NO);
+            dlg->addButton(WarningDialog::YES, QMessageBox::Yes);
+            if(dlg->exec() != QMessageBox::Yes)
+                return false;
+        }
+    }
 	updated = update;
 
 	rightList.append(key);
@@ -257,10 +249,7 @@ bool AddRecipients::addRecipientToRightPane(const CDKey& key, bool update)
 	connect(rightItem, &AddressItem::remove, this, &AddRecipients::removeRecipientFromRightPane);
 	ui->rightPane->addWidget(rightItem);
 	ui->confirm->setDisabled(rightList.isEmpty());
-	if (key.rcpt.isCertificate()) {
-		QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(key.rcpt.cert.data()), key.rcpt.cert.size()));
-		historyCertData.addAndSave({kcert});
-	}
+    historyCertData.addAndSave({key.rcpt_cert});
 	return true;
 }
 
@@ -315,13 +304,9 @@ void AddRecipients::removeRecipientFromRightPane(Item *toRemove)
 {
 	auto *rightItem = qobject_cast<AddressItem*>(toRemove);
 	const CDKey& key = rightItem->getKey();
-	if (key.rcpt.isCertificate()) {
-		QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(key.rcpt.cert.data()), key.rcpt.cert.size()), QSsl::Der);
-		if(auto it = leftList.find(kcert); it != leftList.end())
-		{
-			it.value()->setDisabled(false);
-			it.value()->showButton(AddressItem::Add);
-		}
+    if(auto it = leftList.find(key.rcpt_cert); it != leftList.end()) {
+        it.value()->setDisabled(false);
+        it.value()->showButton(AddressItem::Add);
 	}
 	rightList.removeAll(rightItem->getKey());
 	updated = true;

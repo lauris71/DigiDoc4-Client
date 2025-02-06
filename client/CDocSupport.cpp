@@ -30,7 +30,6 @@
 
 #include "Application.h"
 #include "CheckConnection.h"
-#include "Colors.h"
 #include "QCryptoBackend.h"
 #include "QSigner.h"
 #include "Settings.h"
@@ -65,7 +64,6 @@ DDCryptoBackend::deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<ui
 	QByteArray decryptedKey = qApp->signer()->decrypt([&publicKey, &digest, &algorithmID, &partyUInfo, &partyVInfo](QCryptoBackend *backend) {
 			QByteArray ba(reinterpret_cast<const char *>(publicKey.data()), publicKey.size());
 			return backend->deriveConcatKDF(ba, SHA_MTH[QString::fromStdString(digest)],
-				ECC_KEY_LEN,
 				QByteArray(reinterpret_cast<const char *>(algorithmID.data()), algorithmID.size()),
 				QByteArray(reinterpret_cast<const char *>(partyUInfo.data()), partyUInfo.size()),
 				QByteArray(reinterpret_cast<const char *>(partyVInfo.data()), partyVInfo.size()));
@@ -96,14 +94,14 @@ DDCryptoBackend::getSecret(std::vector<uint8_t>& _secret, unsigned int idx)
 bool
 checkConnection()
 {
-	if(CheckConnection().check()){
-		return true;
-	}
-	return dispatchToMain([] {
-		auto *notification = new FadeInNotification(Application::mainWindow(), ria::qdigidoc4::colors::WHITE, ria::qdigidoc4::colors::MANTIS, 110);
-		notification->start(QCoreApplication::translate("MainWindow", "Check internet connection"), 750, 3000, 1200);
-		return false;
-	});
+    if(CheckConnection().check()) {
+        return true;
+    }
+    return dispatchToMain([] {
+        FadeInNotification::error(Application::mainWindow()->findChild<QWidget*>(QStringLiteral("topBar")),
+                                  QCoreApplication::translate("MainWindow", "Check internet connection"));
+        return false;
+    });
 }
 
 #undef CONFIG_URL

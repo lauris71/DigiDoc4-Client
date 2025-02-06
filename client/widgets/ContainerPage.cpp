@@ -308,19 +308,19 @@ void ContainerPage::showSigningButton()
 
 void ContainerPage::transition(CryptoDoc *container, const QSslCertificate &cert)
 {
-	clear();
-	emit action(ClearCryptoWarning);
-	isSupported = container->state() & UnencryptedContainer || container->canDecrypt(cert);
-	setHeader(container->fileName());
+    clear();
+    emit action(ClearCryptoWarning);
+    isSupported = container->state() & UnencryptedContainer || container->canDecrypt(cert);
+    setHeader(container->fileName());
     bool hasUnsupported = false;
-    for(auto& key: container->keys()) {
-		hasUnsupported = std::max(hasUnsupported, key->unsupported);
-        AddressItem *addr = new AddressItem(key, ui->rightPane, true);
-        connect(addr, &AddressItem::decrypt, this, [this,key]{emit decryptReq(key.dec_key);});
-        ui->rightPane->addWidget(addr);
+    ui->rightPane->clear();
+    for(auto& key: container->keys())
+    {
+        hasUnsupported = hasUnsupported || (key.rcpt_cert.isNull() && !key.lock.isValid());
+        ui->rightPane->addWidget(new AddressItem(key, ui->rightPane, true));
     }
-	if(hasUnsupported)
-		emit warning({UnsupportedCDocWarning});
+    if(hasUnsupported)
+        emit warning({UnsupportedCDocWarning});
     updatePanes(container->state(), container);
     ui->leftPane->setModel(container->documentModel());
 }
@@ -385,29 +385,21 @@ void ContainerPage::transition(DigiDoc* container)
 
 void ContainerPage::update(CryptoDoc* container, const QSslCertificate &cert)
 {
-	isSupported = container->canDecrypt(cert) || container->state() & UnencryptedContainer;
-	hasEmptyFile = false;
-<<<<<<< HEAD
-	bool hasUnsupported = false;
+    isSupported = container->canDecrypt(cert) || container->state() & UnencryptedContainer;
+    hasEmptyFile = false;
+    bool hasUnsupported = false;
     ui->rightPane->clear();
-    for(auto& key: container->keys()) {
-		hasUnsupported = std::max(hasUnsupported, key->unsupported);
-        AddressItem *addr = new AddressItem(key, ui->rightPane, true);
-        connect(addr, &AddressItem::decrypt, this, [this,key]{emit decryptReq(key.dec_key);});
-        ui->rightPane->addWidget(addr);
+    for(auto& key: container->keys())
+    {
+        hasUnsupported = hasUnsupported || (key.rcpt_cert.isNull() && !key.lock.isValid());
+        ui->rightPane->addWidget(new AddressItem(key, ui->rightPane, true));
     }
-	if(hasUnsupported)
-		emit warning({UnsupportedCDocWarning});
-	if(container->state() & EncryptedContainer)
-		updateDecryptionButton();
-=======
-	ui->rightPane->clear();
-	for(auto& key: container->keys()) {
-		AddressItem *addr = new AddressItem(key, ui->rightPane, true);
-		connect(addr, &AddressItem::decrypt, this, [this, key]{emit decryptReq(&key.lock);});
-		ui->rightPane->addWidget(addr);
-	}
->>>>>>> 12be0c35a8dbde335673f0be1fb960fa0aa3cf60
+    if(hasUnsupported)
+        emit warning({UnsupportedCDocWarning});
+    if(container->state() & EncryptedContainer)
+        updateDecryptionButton();
+    if(container->state() & UnencryptedContainer)
+        showMainAction({ EncryptContainer });
 	if(container->state() & UnencryptedContainer)
 		showMainActionEncrypt(container->supportsSymmetricKeys());
 }

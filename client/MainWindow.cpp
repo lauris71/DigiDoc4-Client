@@ -237,9 +237,9 @@ ContainerState MainWindow::currentState()
 	return ContainerState::Uninitialized;
 }
 
-void MainWindow::decrypt(const libcdoc::Lock *lock)
+bool MainWindow::decrypt(const libcdoc::Lock *lock)
 {
-	if(!cryptoDoc) return;
+    if(!cryptoDoc) return false;
 
 	QByteArray secret;
 	if (lock && (lock->type == libcdoc::Lock::Type::SYMMETRIC_KEY || lock->type == libcdoc::Lock::Type::PASSWORD)) {
@@ -247,22 +247,18 @@ void MainWindow::decrypt(const libcdoc::Lock *lock)
 		p.setLabel(QString::fromStdString(lock->label));
 		if (lock->type == libcdoc::Lock::Type::PASSWORD) {
 			p.setMode(PasswordDialog::Mode::DECRYPT, PasswordDialog::Type::PASSWORD);
-			if(!p.exec()) return;
+            if(!p.exec()) return false;
 			secret = p.secret();
 		} else {
 			p.setMode(PasswordDialog::Mode::DECRYPT, PasswordDialog::Type::KEY);
-			if(!p.exec()) return;
+            if(!p.exec()) return false;
 			secret = p.secret();
 		}
 	}
 
 	WaitDialogHolder waitDialog(this, tr("Decrypting"));
 
-	if (cryptoDoc->decrypt(lock, secret)) {
-		ui->cryptoContainerPage->transition(cryptoDoc, qApp->signer()->tokenauth().cert());
-		auto *notification = new FadeInNotification(this, WHITE, MANTIS, 110);
-		notification->start( tr("Decryption succeeded!"), 750, 3000, 1200 );
-	}
+    return cryptoDoc->decrypt(lock, secret);
 }
 
 void MainWindow::dragEnterEvent(QDragEnterEvent *event)
@@ -1128,7 +1124,7 @@ void MainWindow::updateKeys(const QList<CDKey> &keys)
         // fixme: Re-think how other recipient types are handled
         cryptoDoc->addEncryptionKey(key.rcpt_cert);
     }
-	ui->cryptoContainerPage->update(cryptoDoc->canDecrypt(qApp->signer()->tokenauth().cert()), cryptoDoc);
+    ui->cryptoContainerPage->update(cryptoDoc, qApp->signer()->tokenauth().cert());
 }
 
 void MainWindow::containerSummary()

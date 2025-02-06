@@ -54,6 +54,7 @@ private:
 	void mouseReleaseEvent(QMouseEvent *event) final;
 	void setName();
 	void setIdType();
+    void setIdType(const SslCertificate& cert);
 
 	class Private;
 	Private *ui;

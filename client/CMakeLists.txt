@@ -22,6 +22,8 @@ else()
 	)
 endif()
 
+add_subdirectory(libcdoc)
+
 file(GLOB WIDGETS CONFIGURE_DEPENDS
 	"dialogs/*.cpp" "dialogs/*.h" "dialogs/*.ui"
 	"effects/*.cpp" "effects/*.h" "effects/*.ui"

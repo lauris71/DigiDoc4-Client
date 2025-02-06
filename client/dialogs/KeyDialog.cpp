@@ -89,13 +89,12 @@ KeyDialog::KeyDialog(const CDKey &k, QWidget *parent )
 		std::vector<uint8_t> cert = k.lock.getBytes(libcdoc::Lock::Params::CERT);
 		std::string cdigest = k.lock.getString(libcdoc::Lock::Params::CONCAT_DIGEST);
 		QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(cert.data()), cert.size()), QSsl::Der);
-		addItem(tr("Recipient"), k.dec_key.label);
+        addItem(tr("Recipient"), QString::fromStdString(k.lock.label));
 		addItem(tr("ConcatKDF digest method"), QString::fromStdString(cdigest));
-		addItem(tr("Expiry date"), cd1key.cert.expiryDate().toLocalTime().toString(QStringLiteral("dd.MM.yyyy hh:mm:ss")));
-        addItem(tr("Issuer"), SslCertificate(cd1key.cert).issuerInfo(QSslCertificate::CommonName));
+        addItem(tr("Expiry date"), kcert.expiryDate().toLocalTime().toString(QStringLiteral("dd.MM.yyyy hh:mm:ss")));
+        addItem(tr("Issuer"), SslCertificate(kcert).issuerInfo(QSslCertificate::CommonName));
 		d->view->resizeColumnToContents( 0 );
-	if (k.lock.type == libcdoc::Lock::SERVER) {
-		const libcdoc::LockServer& sk = static_cast<const libcdoc::LockServer&>(*k.dec_key);
+    } else if (k.lock.type == libcdoc::Lock::SERVER) {
         addItem(tr("Key server ID"), QString::fromUtf8(k.lock.getString(libcdoc::Lock::Params::KEYSERVER_ID)));
         addItem(tr("Transaction ID"), QString::fromUtf8(k.lock.getString(libcdoc::Lock::Params::TRANSACTION_ID)));
     }

@@ -51,64 +51,41 @@ AddressItem::AddressItem(const CDKey& key, QWidget *parent, bool showIcon)
 	ui->name->setAttribute(Qt::WA_TransparentForMouseEvents, true);
 	ui->expire->setAttribute(Qt::WA_TransparentForMouseEvents, true);
 	ui->idType->setAttribute(Qt::WA_TransparentForMouseEvents, true);
-    if(!ui->key->unsupported)
-		setCursor(Qt::PointingHandCursor);
 
-	connect(ui->add, &QToolButton::clicked, this, [this]{ emit add(this);});
-    if (key->isSymmetric()) {
-        ui->decrypt->show();
-        connect(ui->decrypt, &QToolButton::clicked, this, [this]{ emit decrypt(ui->key);});
+    if (!ui->key.rcpt_cert.isNull()) {
+        // Recipient certificate
+        ui->code = SslCertificate(ui->key.rcpt_cert).personalCode();
+        ui->label = !ui->key.rcpt_cert.subjectInfo("GN").isEmpty() && !ui->key.rcpt_cert.subjectInfo("SN").isEmpty() ?
+                        ui->key.rcpt_cert.subjectInfo("GN").join(' ') + ' ' + ui->key.rcpt_cert.subjectInfo("SN").join(' ') :
+                        ui->key.rcpt_cert.subjectInfo("CN").join(' ');
+    } else if (!ui->key.rcpt.isEmpty()) {
+        // fixme: This should not happen
+        qDebug() << "Nonempty recipient but rcpt_cert is null";
+    } else if (ui->key.lock.isValid()) {
+        // Known lock type
+        ui->code.clear();
+        auto map = libcdoc::Recipient::parseLabel(ui->key.lock.label);
+        if (map.contains("cn")) {
+            ui->label = QString::fromStdString(map["cn"]);
+        } else {
+            ui->label = QString::fromStdString(ui->key.lock.label);
+        }
+        if (ui->key.lock.isSymmetric()) {
+            ui->decrypt->show();
+            connect(ui->decrypt, &QToolButton::clicked, this, [this]{ emit decrypt(&ui->key.lock);});
+        } else {
+            ui->decrypt->hide();
+        }
     } else {
-        ui->decrypt->hide();
+        // No rcpt, lock is invalid = unsupported lock
+        setCursor(Qt::PointingHandCursor);
+        ui->code.clear();
+        ui->label = tr("Unsupported cryptographic algorithm or recipient type");
     }
 
-	if (key.lock.isSymmetric()) {
-		ui->decrypt->show();
-		connect(ui->decrypt, &QToolButton::clicked, this, [this]{ emit decrypt(&ui->key.lock);});
-	} else {
-		ui->code = {};
-        ui->label = key->label;
-	}
+	connect(ui->add, &QToolButton::clicked, this, [this]{ emit add(this);});
+    connect(ui->remove, &QToolButton::clicked, this, [this]{ emit remove(this);});
 
-	if (key.lock.isSymmetric()) {
-		ui->decrypt->show();
-		connect(ui->decrypt, &QToolButton::clicked, this, [this]{ emit decrypt(&ui->key.lock);});
-	} else {
-		ui->decrypt->hide();
-	}
-
-	ui->add->setFont(Styles::font(Styles::Condensed, 12));
-	ui->added->setFont(ui->add->font());
-
-	if (ui->key.rcpt.isCertificate()) {
-		QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(ui->key.rcpt.cert.data()), ui->key.rcpt.cert.size()), QSsl::Der);
-		ui->code = SslCertificate(kcert).personalCode().toHtmlEscaped();
-		ui->label = (!kcert.subjectInfo("GN").isEmpty() && !kcert.subjectInfo("SN").isEmpty() ?
-						 kcert.subjectInfo("GN").join(' ') + " " + kcert.subjectInfo("SN").join(' ') :
-						 kcert.subjectInfo("CN").join(' ')).toHtmlEscaped();
-	} else if (ui->key.lock.isCertificate()) {
-			std::vector<uint8_t> cert = ui->key.lock.getBytes(libcdoc::Lock::Params::CERT);
-			QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(cert.data()), cert.size()), QSsl::Der);
-			ui->code = SslCertificate(kcert).personalCode().toHtmlEscaped();
-			ui->label = (!kcert.subjectInfo("GN").isEmpty() && !kcert.subjectInfo("SN").isEmpty() ?
-							 kcert.subjectInfo("GN").join(' ') + " " + kcert.subjectInfo("SN").join(' ') :
-							 kcert.subjectInfo("CN").join(' ')).toHtmlEscaped();
-	} else {
-		ui->code.clear();
-		if (ui->key.rcpt.type != libcdoc::Recipient::Type::NONE) {
-			ui->label = QString::fromStdString(key.rcpt.label).toHtmlEscaped();
-		} else if (ui->key.lock.isValid()) {
-			ui->label = QString::fromStdString(key.lock.label).toHtmlEscaped();
-		}
-	}
-	if(ui->label.isEmpty()) {
-		if (ui->key.rcpt.isPKI()) {
-			ui->label = QString::fromUtf8(reinterpret_cast<const char *>(ui->key.rcpt.rcpt_key.data()), ui->key.rcpt.rcpt_key.size());
-		} else if (ui->key.lock.type == libcdoc::Lock::PUBLIC_KEY) {
-			std::vector<uint8_t> key_material = ui->key.lock.getBytes(libcdoc::Lock::Params::KEY_MATERIAL);
-			ui->label = QString::fromUtf8(reinterpret_cast<const char *>(key_material.data()), key_material.size());
-		}
-	}
 	setIdType();
 	showButton(AddressItem::Remove);
 }
@@ -129,19 +106,6 @@ void AddressItem::changeEvent(QEvent* event)
 	QWidget::changeEvent(event);
 }
 
-<<<<<<< HEAD
-=======
-bool AddressItem::eventFilter(QObject *o, QEvent *e)
-{
-	if((o == ui->name || o == ui->idType) && e->type() == QEvent::MouseButtonRelease)
-	{
-		(new KeyDialog(ui->key, this))->open();
-		return true;
-	}
-	return Item::eventFilter(o, e);
-}
-
->>>>>>> 12be0c35a8dbde335673f0be1fb960fa0aa3cf60
 const CDKey& AddressItem::getKey() const
 {
 	return ui->key;
@@ -179,22 +143,16 @@ QWidget* AddressItem::lastTabWidget()
 
 void AddressItem::mouseReleaseEvent(QMouseEvent * /*event*/)
 {
-	if(!ui->key->unsupported)
-        (new KeyDialog(*ui->key))->open();
+    if(ui->key.rcpt_cert.isNull() && !ui->key.lock.isValid())
+        (new KeyDialog(ui->key))->open();
 }
 
 void AddressItem::setName()
 {
-<<<<<<< HEAD
 	ui->name->setText(QStringLiteral("%1 <span style=\"font-weight:normal;\">%2</span>")
 		.arg(ui->label.toHtmlEscaped(), (ui->yourself ? ui->code + tr(" (Yourself)") : ui->code).toHtmlEscaped()));
 	if(ui->name->text().isEmpty())
 		ui->name->hide();
-=======
-	QString str = QStringLiteral("%1 <span style=\"font-weight:normal;\">%2</span>").arg(ui->label, ui->yourself ? ui->code + tr(" (Yourself)") : ui->code);
-	qDebug() << "SetName:" << str;
-	ui->name->setText(str);
->>>>>>> 12be0c35a8dbde335673f0be1fb960fa0aa3cf60
 }
 
 void AddressItem::showButton(ShowToolButton show)
@@ -209,78 +167,68 @@ void AddressItem::stateChange(ContainerState state)
 	ui->remove->setVisible(state == UnencryptedContainer);
 }
 
+void
+AddressItem::setIdType(const SslCertificate& cert)
+{
+    SslCertificate::CertType type = cert.type();
+    if(type & SslCertificate::DigiIDType) {
+        ui->idType->setText(tr("digi-ID"));
+    } else if(type & SslCertificate::EstEidType) {
+        ui->idType->setText(tr("ID-card"));
+    } else if(type & SslCertificate::MobileIDType) {
+        ui->idType->setText(tr("mobile-ID"));
+    } else if(type & SslCertificate::TempelType) {
+        if(cert.keyUsage().contains(SslCertificate::NonRepudiation))
+            ui->idType->setText(tr("e-Seal"));
+        else if(cert.enhancedKeyUsage().contains(SslCertificate::ClientAuth))
+            ui->idType->setText(tr("Authentication certificate"));
+        else
+            ui->idType->setText(tr("Certificate for Encryption"));
+    }
+    ui->expire->setProperty("label", QStringLiteral("default"));
+    ui->expire->setText(QStringLiteral("%1 %2").arg(
+        cert.isValid() ? tr("Expires on") : tr("Expired on"),
+        cert.expiryDate().toLocalTime().toString(QStringLiteral("dd.MM.yyyy"))));
+}
+
 void AddressItem::setIdType()
 {
-	if (!ui->key.lock.isValid()) return;
-	if (ui->key.lock.isPKI()) {
-		if (ui->key.lock.isCertificate()) {
-			std::vector<uint8_t> cc = ui->key.lock.getBytes(libcdoc::Lock::Params::CERT);
-			QSslCertificate kcert(QByteArray(reinterpret_cast<const char *>(cc.data()), cc.size()), QSsl::Der);
-            ui->idType->setHidden(false);
-            QString str;
-            SslCertificate cert(ckd->cert);
-            SslCertificate::CertType type = cert.type();
-    		if(ui->key->unsupported)
-				str = "Unsupported";
-            else if(type & SslCertificate::DigiIDType)
-                str = tr("digi-ID");
-            else if(type & SslCertificate::EstEidType)
-                str = tr("ID-card");
-            else if(type & SslCertificate::MobileIDType)
-                str = tr("mobile-ID");
-            else if(type & SslCertificate::TempelType)
-            {
-                if(cert.keyUsage().contains(SslCertificate::NonRepudiation))
-                    str = tr("e-Seal");
-                else if(cert.enhancedKeyUsage().contains(SslCertificate::ClientAuth))
-                    str = tr("Authentication certificate");
-                else
-                    str = tr("Certificate for Encryption");
-            }
-			else
-			{
-        		auto items = ui->key->fromKeyLabel();
-				void(QT_TR_NOOP("ID-CARD"));
-				ui->idType->setText(tr(items[QStringLiteral("type")].toUtf8().data()));
-				if(QString server_exp = items[QStringLiteral("server_exp")]; !server_exp.isEmpty())
-				{
-					auto date = QDateTime::fromSecsSinceEpoch(server_exp.toLongLong(), Qt::UTC);
-					bool canDecrypt = QDateTime::currentDateTimeUtc() < date;
-					ui->expire->setProperty("label", canDecrypt ? QStringLiteral("good") : QStringLiteral("error"));
-					ui->expire->setText(canDecrypt ? QStringLiteral("%1 %2").arg(
-					tr("Decryption is possible until:"), date.toLocalTime().toString(QStringLiteral("dd.MM.yyyy"))) :
-					tr("Decryption has expired"));
-				}
-			}
-			if(!cert.isNull())
-			{
-				ui->expire->setProperty("label", QStringLiteral("default"));
-				ui->expire->setText(QStringLiteral("%1 %2").arg(
-					cert.isValid() ? tr("Expires on") : tr("Expired on"),
-					cert.expiryDate().toLocalTime().toString(QStringLiteral("dd.MM.yyyy"))));
-			}
-            if(!str.isEmpty())
-                str += QStringLiteral(" - ");
-            QDateTime date(cert.expiryDate().toLocalTime());
-            ui->idType->setText(QStringLiteral("%1%2 %3").arg(str,
-                                                              cert.isValid() ? tr("Expires on") : tr("Expired on"),
-                                                              date.toLocalTime().toString(QStringLiteral("dd. MMMM yyyy"))));
+    ui->expire->clear();
+
+    if (!ui->key.rcpt_cert.isNull()) {
+        // Recipient certificate
+        SslCertificate cert(ui->key.rcpt_cert);
+        setIdType(cert);
+    } else if (!ui->key.rcpt.isEmpty()) {
+        // fixme: This should not happen
+        qDebug() << "Nonempty recipient but rcpt_cert is null";
+    } else if (ui->key.lock.isValid()) {
+        // Known lock type
+        // Needed to include translation for "ID-CARD"
+        void(QT_TR_NOOP("ID-CARD"));
+        auto items = libcdoc::Recipient::parseLabel(ui->key.lock.label);
+        if (ui->key.lock.isCertificate()) {
+            auto bytes = ui->key.lock.getBytes(libcdoc::Lock::CERT);
+            SslCertificate cert(ui->key.rcpt_cert);
+            setIdType(cert);
         } else {
-            QString type = (pki->pk_type == CKey::PKType::RSA) ? "RSA" : "ECC";
-            ui->idType->setHidden(false);
-            ui->idType->setText(type + " public key");
+            ui->idType->setText(tr(items["type"].data()));
         }
- 	} else if ((ui->key.lock.type == libcdoc::Lock::Type::SYMMETRIC_KEY || ui->key.lock.type == libcdoc::Lock::Type::PASSWORD)) {
-        ui->idType->setHidden(false);
-        if (ui->key.lock.type == libcdoc::Lock::Type::PASSWORD) {
-            ui->idType->setText("Password derived key");
-        } else {
-            ui->idType->setText("Symmetric key");
+        std::string server_exp = items["server_exp"];
+        if (!server_exp.empty()) {
+            uint64_t seconds = std::stoull(server_exp);
+            auto date = QDateTime::fromSecsSinceEpoch(seconds, Qt::UTC);
+            bool canDecrypt = QDateTime::currentDateTimeUtc() < date;
+            ui->expire->setProperty("label", canDecrypt ? QStringLiteral("good") : QStringLiteral("error"));
+            ui->expire->setText(canDecrypt ? QStringLiteral("%1 %2").arg(
+                                    tr("Decryption is possible until:"), date.toLocalTime().toString(QStringLiteral("dd.MM.yyyy"))) :
+                                    tr("Decryption has expired"));
         }
     } else {
-        ui->idType->setHidden(false);
-        ui->idType->setText("Unknown key type");
-	}
+        // No rcpt, lock is invalid = unsupported lock
+        ui->idType->setText("Unsupported");
+        ui->expire->setHidden(true);
+    }
 	ui->idType->setHidden(ui->idType->text().isEmpty());
 	ui->expire->setHidden(ui->expire->text().isEmpty());
 }

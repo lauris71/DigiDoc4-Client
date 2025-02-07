@@ -28,7 +28,6 @@
 #include <cdoc/Io.h>
 
 struct DDConfiguration : public libcdoc::Configuration {
-    std::string getValue(const std::string_view& param) final;
     std::string getValue(const std::string_view& domain, const std::string_view& param) final;
 
 	explicit DDConfiguration() = default;

@@ -126,17 +126,6 @@ request(const QString &keyserver_id, const QString &transaction_id = {}) {
 }
 
 std::string
-DDConfiguration::getValue(const std::string_view& param)
-{
-//	if (param == libcdoc::Configuration::USE_KEYSERVER) {
-//		return (Settings::CDOC2_USE_KEYSERVER) ? "true" : "false";
-//    } else if (param == libcdoc::Configuration::KEYSERVER_ID) {
-//        return Settings::CDOC2_DEFAULT_KEYSERVER;
-//    }
-	return {};
-}
-
-std::string
 DDConfiguration::getValue(const std::string_view& domain, const std::string_view& param)
 {
     std::string def = Settings::CDOC2_DEFAULT_KEYSERVER;

@@ -108,7 +108,6 @@ qt_add_resources(${PROJECT_NAME} tsl BASE ${TSL_DIR} PREFIX /TSL FILES ${TSL_LIS
 
 target_link_libraries(${PROJECT_NAME}
 	qdigidoccommon
-	cdoc
 	Qt6::PrintSupport
 	Qt6::SvgWidgets
 	digidocpp::digidocpp

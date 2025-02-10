@@ -39,7 +39,7 @@
 
 #include "CDocSupport.h"
 
-int
+libcdoc::result_t
 DDCryptoBackend::decryptRSA(std::vector<uint8_t>& result, const std::vector<uint8_t> &data, bool oaep, unsigned int idx)
 {
 	QByteArray qdata(reinterpret_cast<const char *>(data.data()), data.size());
@@ -57,7 +57,7 @@ const QHash<QString, QCryptographicHash::Algorithm> SHA_MTH{
 	{SHA256_MTH, QCryptographicHash::Sha256}, {SHA384_MTH, QCryptographicHash::Sha384}, {SHA512_MTH, QCryptographicHash::Sha512}
 };
 
-int
+libcdoc::result_t
 DDCryptoBackend::deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::string &digest,
                                  const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo, unsigned int idx)
 {
@@ -72,7 +72,7 @@ DDCryptoBackend::deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<ui
 	return (dst.empty()) ? OPENSSL_ERROR : libcdoc::OK;
 }
 
-int
+libcdoc::result_t
 DDCryptoBackend::deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &key_material, const std::vector<uint8_t> &salt, unsigned int idx)
 {
 	QByteArray qkey_material(reinterpret_cast<const char *>(key_material.data()), key_material.size());
@@ -84,7 +84,7 @@ DDCryptoBackend::deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<
 	return (dst.empty()) ? OPENSSL_ERROR : libcdoc::OK;
 }
 
-int
+libcdoc::result_t
 DDCryptoBackend::getSecret(std::vector<uint8_t>& _secret, unsigned int idx)
 {
 	_secret = secret;
@@ -162,7 +162,7 @@ DDNetworkBackend::getLastErrorStr(int code) const
 	return libcdoc::NetworkBackend::getLastErrorStr(code);
 }
 
-int
+libcdoc::result_t
 DDNetworkBackend::sendKey (libcdoc::NetworkBackend::CapsuleInfo& dst, const std::string& url, const std::vector<uint8_t>& rcpt_key, const std::vector<uint8_t> &key_material, const std::string &type)
 {
     QNetworkRequest req(QString::fromStdString(url + "/key-capsules"));
@@ -199,7 +199,7 @@ DDNetworkBackend::sendKey (libcdoc::NetworkBackend::CapsuleInfo& dst, const std:
 	return OK;
 };
 
-int
+libcdoc::result_t
 DDNetworkBackend::fetchKey(std::vector<uint8_t>& result, const std::string& keyserver_id, const std::string& transaction_id)
 {
 	QNetworkRequest req = request(QString::fromStdString(keyserver_id), QString::fromStdString(transaction_id));
@@ -239,7 +239,7 @@ TempListConsumer::~TempListConsumer()
 	}
 }
 
-int64_t
+libcdoc::result_t
 TempListConsumer::write(const uint8_t *src, size_t size)
 {
     if (files.empty()) return libcdoc::OUTPUT_ERROR;
@@ -250,7 +250,7 @@ TempListConsumer::write(const uint8_t *src, size_t size)
 	return size;
 }
 
-int
+libcdoc::result_t
 TempListConsumer::close()
 {
     if (files.empty()) return libcdoc::OUTPUT_ERROR;
@@ -267,7 +267,7 @@ TempListConsumer::isError()
 	return !file.data->isWritable();
 }
 
-int
+libcdoc::result_t
 TempListConsumer::open(const std::string& name, int64_t size)
 {
 	IOEntry io({name, "application/octet-stream", 0, {}});
@@ -285,7 +285,7 @@ StreamListSource::StreamListSource(const std::vector<IOEntry>& files) : _files(f
 {
 }
 
-int64_t
+libcdoc::result_t
 StreamListSource::read(uint8_t *dst, size_t size)
 {
 	if ((_current < 0) || (_current >= _files.size())) return 0;
@@ -307,13 +307,13 @@ StreamListSource::isEof()
 	return _files[_current].data->atEnd();
 }
 
-size_t
+libcdoc::result_t
 StreamListSource::getNumComponents()
 {
 	return _files.size();
 }
 
-int
+libcdoc::result_t
 StreamListSource::next(std::string& name, int64_t& size)
 {
 	++_current;

@@ -22,7 +22,7 @@ else()
 	)
 endif()
 
-add_subdirectory(libcdoc)
+add_subdirectory(libcdoc EXCLUDE_FROM_ALL)
 
 file(GLOB WIDGETS CONFIGURE_DEPENDS
 	"dialogs/*.cpp" "dialogs/*.h" "dialogs/*.ui"

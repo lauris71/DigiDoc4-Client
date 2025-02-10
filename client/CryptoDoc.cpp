@@ -60,13 +60,9 @@ CryptoDoc::labelFromCertificate(const std::vector<uint8_t>& cert)
 	// Test
 	libcdoc::Certificate sslcert(cert);
 	std::string name = sslcert.getCommonName();
-	qDebug() << "COMMON NAME:" << name;
 	name = sslcert.getGivenName();
-	qDebug() << "GIVEN NAME:" << name;
 	name = sslcert.getSurname();
-	qDebug() << "SURNAME:" << name;
 	name = sslcert.getSerialNumber();
-	qDebug() << "SERIAL:" << name;
 	std::vector<std::string> policies = sslcert.policies();
 
 

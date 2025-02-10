@@ -34,12 +34,12 @@ struct DDConfiguration : public libcdoc::Configuration {
 };
 
 struct DDCryptoBackend : public libcdoc::CryptoBackend {
-    int decryptRSA(std::vector<uint8_t>& result, const std::vector<uint8_t> &data, bool oaep, unsigned int idx) override final;
-	int deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::string &digest,
+    libcdoc::result_t decryptRSA(std::vector<uint8_t>& result, const std::vector<uint8_t> &data, bool oaep, unsigned int idx) override final;
+    libcdoc::result_t deriveConcatKDF(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::string &digest,
 						const std::vector<uint8_t> &algorithmID, const std::vector<uint8_t> &partyUInfo, const std::vector<uint8_t> &partyVInfo,
                         unsigned int idx) override final;
-    int deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::vector<uint8_t> &salt, unsigned int idx) override final;
-    int getSecret(std::vector<uint8_t>& secret, unsigned int idx) override final;
+    libcdoc::result_t deriveHMACExtract(std::vector<uint8_t>& dst, const std::vector<uint8_t> &publicKey, const std::vector<uint8_t> &salt, unsigned int idx) override final;
+    libcdoc::result_t getSecret(std::vector<uint8_t>& secret, unsigned int idx) override final;
 
 	std::vector<uint8_t> secret;
 
@@ -50,11 +50,11 @@ struct DDNetworkBackend : public libcdoc::NetworkBackend, private QObject {
 	static constexpr int BACKEND_ERROR = -303;
 
 	std::string getLastErrorStr(int code) const final;
-    int sendKey(libcdoc::NetworkBackend::CapsuleInfo& dst, const std::string& url, const std::vector<uint8_t>& rcpt_key, const std::vector<uint8_t> &key_material, const std::string &type) override final;
-    int fetchKey(std::vector<uint8_t>& result, const std::string& keyserver_id, const std::string& transaction_id) override final;
+    libcdoc::result_t sendKey(libcdoc::NetworkBackend::CapsuleInfo& dst, const std::string& url, const std::vector<uint8_t>& rcpt_key, const std::vector<uint8_t> &key_material, const std::string &type) override final;
+    libcdoc::result_t fetchKey(std::vector<uint8_t>& result, const std::string& keyserver_id, const std::string& transaction_id) override final;
 
-    int getClientTLSCertificate(std::vector<uint8_t>& dst) override final { return libcdoc::NOT_IMPLEMENTED; }
-    int getPeerTLSCertificates(std::vector<std::vector<uint8_t>> &dst) override final { return libcdoc::NOT_IMPLEMENTED; }
+    libcdoc::result_t getClientTLSCertificate(std::vector<uint8_t>& dst) override final { return libcdoc::NOT_IMPLEMENTED; }
+    libcdoc::result_t getPeerTLSCertificates(std::vector<std::vector<uint8_t>> &dst) override final { return libcdoc::NOT_IMPLEMENTED; }
 
     explicit DDNetworkBackend() = default;
 
@@ -72,29 +72,26 @@ struct IOEntry
 struct TempListConsumer : public libcdoc::MultiDataConsumer {
 	static constexpr int64_t MAX_VEC_SIZE = 500L * 1024L * 1024L;
 
-	size_t _max_memory_size;
-	std::vector<IOEntry> files;
-	explicit TempListConsumer(size_t max_memory_size = 500L * 1024L * 1024L) : _max_memory_size(max_memory_size) {}
+    explicit TempListConsumer(size_t max_memory_size = 500L * 1024L * 1024L) : _max_memory_size(max_memory_size) {}
 	~TempListConsumer();
-	int64_t write(const uint8_t *src, size_t size) override final;
-	int close() override final;
-	bool isError() override final;
-	int open(const std::string& name, int64_t size) override final;
-private:
-	//std::ostream *ofs = nullptr;
 
-	//std::stringstream *sstream = nullptr;
-	//std::ofstream *fstream = nullptr;
-	//std::string tmp_name;
+    libcdoc::result_t write(const uint8_t *src, size_t size) override final;
+    libcdoc::result_t close() override final;
+	bool isError() override final;
+    libcdoc::result_t open(const std::string& name, int64_t size) override final;
+
+    size_t _max_memory_size;
+    std::vector<IOEntry> files;
 };
 
 struct StreamListSource : public libcdoc::MultiDataSource {
 	StreamListSource(const std::vector<IOEntry>& files);
-	int64_t read(uint8_t *dst, size_t size) override final;
+
+    int64_t read(uint8_t *dst, size_t size) override final;
 	bool isError() override final;
 	bool isEof() override final;
-	size_t getNumComponents() override final;
-	int next(std::string& name, int64_t& size) override final;
+    libcdoc::result_t getNumComponents() override final;
+    libcdoc::result_t next(std::string& name, int64_t& size) override final;
 
 	const std::vector<IOEntry>& _files;
 	int64_t _current;

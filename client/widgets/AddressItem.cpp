@@ -201,20 +201,23 @@ void AddressItem::setIdType()
         auto items = libcdoc::Recipient::parseLabel(ui->key.lock.label);
         if (ui->key.lock.isCertificate()) {
             auto bytes = ui->key.lock.getBytes(libcdoc::Lock::CERT);
-            SslCertificate cert(ui->key.rcpt_cert);
+            QByteArray qbytes((const char *) bytes.data(), bytes.size());
+            SslCertificate cert(qbytes, QSsl::Der);
             setIdType(cert);
         } else {
             ui->idType->setText(tr(items["type"].data()));
         }
-        std::string server_exp = items["server_exp"];
-        if (!server_exp.empty()) {
-            uint64_t seconds = std::stoull(server_exp);
-            auto date = QDateTime::fromSecsSinceEpoch(seconds, Qt::UTC);
-            bool canDecrypt = QDateTime::currentDateTimeUtc() < date;
-            ui->expire->setProperty("label", canDecrypt ? QStringLiteral("good") : QStringLiteral("error"));
-            ui->expire->setText(canDecrypt ? QStringLiteral("%1 %2").arg(
-                                    tr("Decryption is possible until:"), date.toLocalTime().toString(QStringLiteral("dd.MM.yyyy"))) :
-                                    tr("Decryption has expired"));
+        if (ui->key.lock.type == libcdoc::Lock::SERVER) {
+            std::string server_exp = items["server_exp"];
+            if (!server_exp.empty()) {
+                uint64_t seconds = std::stoull(server_exp);
+                auto date = QDateTime::fromSecsSinceEpoch(seconds, Qt::UTC);
+                bool canDecrypt = QDateTime::currentDateTimeUtc() < date;
+                ui->expire->setProperty("label", canDecrypt ? QStringLiteral("good") : QStringLiteral("error"));
+                ui->expire->setText(canDecrypt ? QStringLiteral("%1 %2").arg(
+                                        tr("Decryption is possible until:"), date.toLocalTime().toString(QStringLiteral("dd.MM.yyyy"))) :
+                                        tr("Decryption has expired"));
+            }
         }
     } else {
         // No rcpt, lock is invalid = unsupported lock

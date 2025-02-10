@@ -33,9 +33,6 @@
 class QSslKey;
 
 struct CDKey {
-    // fixme:
-    // Remove all this Recipient stuff and keep only QSslCertificate here
-    libcdoc::Recipient _rcpt;
     libcdoc::Lock lock;
     QSslCertificate rcpt_cert;
 	bool operator== (const CDKey& rhs) const = default;

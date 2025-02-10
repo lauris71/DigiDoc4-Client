@@ -133,7 +133,7 @@ public:
 		}
 		keys.clear();
         for (auto& key : r->getLocks()) {
-            keys.push_back({{}, key, QSslCertificate()});
+            keys.push_back({key, QSslCertificate()});
 		}
 		return std::unique_ptr<libcdoc::CDocReader>(r);
 	}
@@ -371,7 +371,7 @@ bool CryptoDoc::addEncryptionKey(const QSslCertificate& cert )
 			return false;
 		}
 	}
-    d->keys.push_back({{}, {}, cert});
+    d->keys.push_back({{}, cert});
 	return true;
 }
 

@@ -177,7 +177,6 @@ AddressItem * AddRecipients::addRecipientToLeftPane(const QSslCertificate& cert)
 	QByteArray qder = cert.toDer();
 	std::vector<uint8_t> sder = std::vector<uint8_t>(qder.cbegin(), qder.cend());
 	CDKey key = {
-		libcdoc::Recipient::makeCertificate(CryptoDoc::labelFromCertificate(sder), sder),
         {},
         cert
 	};

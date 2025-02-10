@@ -176,7 +176,7 @@ DDNetworkBackend::sendKey (libcdoc::NetworkBackend::CapsuleInfo& dst, const std:
 	QNetworkReply *reply = nam->post(req, QJsonDocument({
         {QLatin1String("recipient_id"), QLatin1String(QByteArray(reinterpret_cast<const char *>(rcpt_key.data()), rcpt_key.size()).toBase64())},
 		{QLatin1String("ephemeral_key_material"), QLatin1String(QByteArray(reinterpret_cast<const char *>(key_material.data()), key_material.size()).toBase64())},
-		{QLatin1String("capsule_type"), QLatin1String(type)},
+        {QLatin1String("capsule_type"), QLatin1String(type.c_str())},
 	}).toJson());
 	connect(reply, &QNetworkReply::finished, &e, &QEventLoop::quit);
 	e.exec();

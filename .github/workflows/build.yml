@@ -184,7 +184,7 @@ jobs:
       env:
         VCPKG_MANIFEST_DIR: ${{ github.workspace }}/client/libcdoc
       run: |
-        cmake "-GNinja" -B build -S . -DCMAKE_BUILD_TYPE=RelWithDebInfo "-DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=${{ env.VCPKG_DEFAULT_TRIPLET }}
+        cmake "-GNinja" -B build -S . -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake -DVCPKG_MANIFEST_DIR=${{ github.workspace }}/client/libcdoc
         cmake --build build --target msi
         cmake --build build --target msishellext
         cmake --build build --target appx

@@ -113,8 +113,6 @@ target_link_libraries(${PROJECT_NAME}
 	digidocpp::digidocpp
 	${LDAP_LIBRARIES}
 	cdoc_static
-	${LIBXML2_LIBRARIES}
-	ZLIB::ZLIB
 )
 
 if(NOT BUILD_DATE)

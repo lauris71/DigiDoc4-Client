@@ -159,11 +159,14 @@ jobs:
         Rename-Item "libdigidocpp*.msi" libdigidocpp.msi
         msiexec /qn /i libdigidocpp.msi
     - name: Prepare vcpkg
-      uses: lukka/run-vcpkg@v7
+      uses: lukka/run-vcpkg@v11
       with:
-        vcpkgArguments: openssl zlib flatbuffers
         vcpkgGitCommitId: e4644bd15436d406bba71928d086c809e5c9ca45
-        vcpkgTriplet: x64-windows
+        vcpkgJsonGlob: ./client/libcdoc/vcpkg.json
+        runVcpkgInstall: true
+      env:
+        VCPKG_DEFAULT_TRIPLET: x64-windows
+        VCPKG_INSTALLED_DIR: ${{ github.workspace }}/build/vcpkg_installed
     - name: Install Qt
       uses: jurplel/install-qt-action@v4
       with:

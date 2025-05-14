@@ -61,6 +61,7 @@ AddressItem::AddressItem(const CDKey &key, Type type, QWidget *parent)
 						? ui->key.rcpt_cert.subjectInfo("GN").join(' ') + ' ' +
 							  ui->key.rcpt_cert.subjectInfo("SN").join(' ')
 						: ui->key.rcpt_cert.subjectInfo("CN").join(' ');
+		ui->decrypt->hide();
 	} else if (ui->key.lock.isValid()) {
 		// Known lock type
 		ui->code.clear();
@@ -82,6 +83,7 @@ AddressItem::AddressItem(const CDKey &key, Type type, QWidget *parent)
 		unsupported = true;
 		ui->code.clear();
 		ui->label = tr("Unsupported cryptographic algorithm or recipient type");
+		ui->decrypt->hide();
 	}
 
 	if(!unsupported)

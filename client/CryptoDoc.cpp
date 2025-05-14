@@ -551,10 +551,16 @@ bool CryptoDoc::open( const QString &file )
 	return true;
 }
 
-void CryptoDoc::removeKey( int id )
+void CryptoDoc::removeKey(unsigned int id)
 {
 	if(!d->warnIfNotWritable())
 		d->keys.erase(d->keys.begin() + id);
+}
+
+void CryptoDoc::clearKeys()
+{
+	if(!d->warnIfNotWritable())
+		d->keys.clear();
 }
 
 bool CryptoDoc::saveCopy(const QString &filename)

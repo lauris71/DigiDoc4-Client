@@ -62,7 +62,8 @@ public:
 	const std::vector<CDKey>& keys() const;
 	bool move(const QString &to);
 	bool open( const QString &file );
-	void removeKey( int id );
+	void removeKey(unsigned int id);
+	void clearKeys();
 	bool saveCopy(const QString &filename);
 	ria::qdigidoc4::ContainerState state() const;
 

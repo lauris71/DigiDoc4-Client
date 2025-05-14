@@ -105,27 +105,6 @@ checkConnection()
 	});
 }
 
-#undef CONFIG_URL
-
-QNetworkRequest
-request(const QString &keyserver_id, const QString &transaction_id = {}) {
-#ifdef CONFIG_URL
-	QJsonObject list = Application::confValue(QLatin1String("CDOC2-CONF")).toObject();
-	QJsonObject data = list.value(keyserver_id).toObject();
-	QString url = transaction_id.isEmpty() ?
-		data.value(QLatin1String("POST")).toString(Settings::CDOC2_POST) :
-		data.value(QLatin1String("FETCH")).toString(Settings::CDOC2_GET);
-#else
-	QString url = transaction_id.isEmpty() ? Settings::CDOC2_POST : Settings::CDOC2_GET;
-#endif
-	if(url.isEmpty())
-		return QNetworkRequest{};
-	QNetworkRequest req(QStringLiteral("%1/key-capsules%2").arg(url,
-		transaction_id.isEmpty() ? QString(): QStringLiteral("/%1").arg(transaction_id)));
-	req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
-	return req;
-}
-
 std::string
 DDConfiguration::getValue(std::string_view domain, std::string_view param) const
 {
@@ -134,7 +113,7 @@ DDConfiguration::getValue(std::string_view domain, std::string_view param) const
 		if (param == libcdoc::Configuration::KEYSERVER_SEND_URL) {
 #ifdef CONFIG_URL
 			QJsonObject list = Application::confValue(QLatin1String("CDOC2-CONF")).toObject();
-			QJsonObject data = list.value(domain).toObject();
+			QJsonObject data = list.value(QString::fromUtf8(domain.data(), domain.size())).toObject();
 			QString url = data.value(QLatin1String("POST")).toString(Settings::CDOC2_POST);
 			return url.toStdString();
 #else
@@ -144,8 +123,8 @@ DDConfiguration::getValue(std::string_view domain, std::string_view param) const
 		} else if (param == libcdoc::Configuration::KEYSERVER_FETCH_URL) {
 #ifdef CONFIG_URL
 			QJsonObject list = Application::confValue(QLatin1String("CDOC2-CONF")).toObject();
-			QJsonObject data = list.value(domain).toObject();
-			QString url = data.value(QLatin1String("POST")).toString(Settings::CDOC2_GET);
+			QJsonObject data = list.value(QString::fromUtf8(domain.data(), domain.size())).toObject();
+			QString url = data.value(QLatin1String("FETCH")).toString(Settings::CDOC2_GET);
 			return url.toStdString();
 #else
 			QString url = Settings::CDOC2_GET;
@@ -209,18 +188,15 @@ libcdoc::result_t DDNetworkBackend::sendKey(
 	QDateTime dt = QDateTime::currentDateTimeUtc();
 	dt = dt.addMonths(6);
 	dst.expiry_time = dt.toSecsSinceEpoch();
-	return OK;
+	return libcdoc::OK;
 };
 
 libcdoc::result_t
 DDNetworkBackend::fetchKey(std::vector<uint8_t> &result,
-						   const std::string &keyserver_id,
+						   const std::string &url,
 						   const std::string &transaction_id) {
-	QNetworkRequest req = request(QString::fromStdString(keyserver_id), QString::fromStdString(transaction_id));
-	if(req.url().isEmpty()) {
-		last_error = "No valid config found for keyserver_id:" + keyserver_id;
-		return BACKEND_ERROR;
-	}
+	QNetworkRequest req(QStringLiteral("%1/key-capsules/%2").arg(QString::fromStdString(url), QString::fromStdString(transaction_id)));
+	req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
 	if(!checkConnection()) {
 		last_error = "No connection";
 		return BACKEND_ERROR;
@@ -235,6 +211,7 @@ DDNetworkBackend::fetchKey(std::vector<uint8_t> &result,
 	if(authKey.handle()) {
 		qApp->signer()->logout();
 	}
+
 	if(reply->error() != QNetworkReply::NoError && reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() != 201) {
 		last_error = reply->errorString().toStdString();
 		return BACKEND_ERROR;
@@ -242,28 +219,28 @@ DDNetworkBackend::fetchKey(std::vector<uint8_t> &result,
 	QJsonObject json = QJsonDocument::fromJson(reply->readAll()).object();
 	QByteArray key_material = QByteArray::fromBase64(json.value(QLatin1String("ephemeral_key_material")).toString().toLatin1());
 	result.assign(key_material.cbegin(), key_material.cend());
-	return OK;
+	return libcdoc::OK;
 }
 
 Q_DECLARE_LOGGING_CATEGORY(LOG_CDOC)
 Q_LOGGING_CATEGORY(LOG_CDOC, "libcdoc")
 
-void DDCDocLogger::LogMessage(libcdoc::LogLevel level, const char *file,
+void DDCDocLogger::LogMessage(libcdoc::ILogger::LogLevel level, const char *file,
 							  int line, const std::string &message) {
 	switch (level) {
-	case libcdoc::LogLevel::LogLevelFatal:
+	case libcdoc::ILogger::LogLevel::LEVEL_FATAL:
 		qFatal("%s", message.c_str());
 		break;
-	case libcdoc::LogLevel::LogLevelError:
+	case libcdoc::ILogger::LogLevel::LEVEL_ERROR:
 		qCCritical(LOG_CDOC) << message.c_str();
 		break;
-	case libcdoc::LogLevel::LogLevelWarning:
+	case libcdoc::ILogger::LogLevel::LEVEL_WARNING:
 		qCWarning(LOG_CDOC) << message.c_str();
 		break;
-	case libcdoc::LogLevel::LogLevelInfo:
+	case libcdoc::ILogger::LogLevel::LEVEL_INFO:
 		qCInfo(LOG_CDOC) << message.c_str();
 		break;
-	case libcdoc::LogLevel::LogLevelDebug:
+	case libcdoc::ILogger::LogLevel::LEVEL_DEBUG:
 		qCDebug(LOG_CDOC) << message.c_str();
 		break;
 	default:
@@ -277,8 +254,8 @@ void DDCDocLogger::setUpLogger() {
 	static DDCDocLogger *logger = nullptr;
 	if (logger) {
 		logger = new DDCDocLogger();
-		logger->SetMinLogLevel(libcdoc::LogLevel::LogLevelTrace);
-		libcdoc::add_logger(logger);
+		logger->SetMinLogLevel(libcdoc::ILogger::LogLevel::LEVEL_TRACE);
+		libcdoc::ILogger::addLogger(logger);
 	}
 }
 

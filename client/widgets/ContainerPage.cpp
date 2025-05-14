@@ -253,8 +253,7 @@ void ContainerPage::transition(CryptoDoc *container, const QSslCertificate &cert
 		AddRecipients dlg(ui->rightPane, this);
 		if(!dlg.exec() || !dlg.isUpdated())
 			return;
-		for(auto i = container->keys().size() - 1; i >= 0; i--)
-			container->removeKey(i);
+		container->clearKeys();
 		ui->rightPane->clear();
 		for(const auto &key: dlg.keys())
 		{

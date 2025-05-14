@@ -120,7 +120,7 @@ class DDCDocLogger : private libcdoc::ILogger {
   private:
 	DDCDocLogger() = default;
 	~DDCDocLogger() = default;
-	void LogMessage(libcdoc::LogLevel level, const char *file, int line,
+	void LogMessage(libcdoc::ILogger::LogLevel level, const char *file, int line,
 					const std::string &message) override final;
 };
 

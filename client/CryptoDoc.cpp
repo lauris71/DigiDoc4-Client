@@ -390,6 +390,7 @@ void CryptoDoc::clear( const QString &file )
 	d->reader.reset();
 	d->fileName = file;
 	d->writer_last_error.clear();
+	d->files.clear();
 }
 
 ContainerState CryptoDoc::state() const
@@ -462,9 +463,6 @@ bool CryptoDoc::decrypt(const libcdoc::Lock *lock, const QByteArray &secret) {
 	if (d->reader->getFMK(fmk, lock_idx) != libcdoc::OK)
 		return false;
 	d->fmk = QByteArray(reinterpret_cast<const char *>(fmk.data()), fmk.size());
-#ifndef NDEBUG
-	qDebug() << "FMK (Transport key)" << d->fmk.toHex();
-#endif
 	if (d->fmk.isEmpty()) {
 		const std::string &msg = d->reader->getLastErrorStr();
 		WarningDialog::show(tr("Failed to decrypt document. Please check your "
@@ -539,13 +537,17 @@ bool CryptoDoc::move(const QString &to)
 	return false;
 }
 
-bool CryptoDoc::open( const QString &file )
+bool CryptoDoc::open(const QString &file)
 {
 	d->writer_last_error.clear();
 	clear(file);
 	d->reader = d->createCDocReader(file.toStdString());
 	if (!d->reader) {
 		return false;
+	}
+	std::vector<libcdoc::FileInfo> files = CDocSupport::getCDocFileList(file);
+	for (auto& f : files) {
+		d->files.push_back({f.name, {}, f.size, {}});
 	}
 	Application::addRecent( file );
 	return true;

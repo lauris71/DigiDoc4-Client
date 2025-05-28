@@ -124,6 +124,11 @@ class DDCDocLogger : private libcdoc::ILogger {
 					const std::string &message) override final;
 };
 
+class CDocSupport {
+public:
+	static std::vector<libcdoc::FileInfo> getCDocFileList(QString filename);
+};
+
 //
 // DataSource and consumer that can share temporary files/buffwers
 //

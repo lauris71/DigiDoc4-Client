@@ -28,6 +28,7 @@
 #include <QtNetwork/QSslKey>
 #include <QtCore/QJsonDocument>
 #include <QLoggingCategory>
+#include <QXmlStreamReader>
 
 #include "Application.h"
 #include "CheckConnection.h"
@@ -37,8 +38,48 @@
 #include "TokenData.h"
 #include "Utils.h"
 #include "effects/FadeInNotification.h"
+#include <cdoc/CDocReader.h>
 
 #include "CDocSupport.h"
+
+std::vector<libcdoc::FileInfo>
+CDocSupport::getCDocFileList(QString filename)
+{
+	std::vector<libcdoc::FileInfo> files;
+	int version = libcdoc::CDocReader::getCDocFileVersion(filename.toStdString());
+	if (version != 1) return files;
+	QFile ifs(filename);
+	ifs.open(QIODevice::ReadOnly);
+	QXmlStreamReader xml(&ifs);
+	while (xml.readNextStartElement()) {
+		if (xml.name() == QStringLiteral("EncryptedData")) {
+			while (xml.readNextStartElement()) {
+				if (xml.name() == QStringLiteral("EncryptionProperties")) {
+					while (xml.readNextStartElement()) {
+						if (xml.name() == QStringLiteral("EncryptionProperty")) {
+							if (xml.attributes().value(QStringLiteral("Name")) == QStringLiteral("orig_file")) {
+								QString content = xml.readElementText();
+								auto list = content.split("|");
+								files.push_back({list.at(0).toStdString(), list.at(1).toInt()});
+							} else {
+								xml.skipCurrentElement();
+							}
+						} else {
+							xml.skipCurrentElement();
+						}
+					}
+				} else {
+					xml.skipCurrentElement();
+				}
+			}
+		} else {
+			xml.skipCurrentElement();
+		}
+	}
+	ifs.close();
+
+	return files;
+}
 
 libcdoc::result_t
 DDCryptoBackend::decryptRSA(std::vector<uint8_t>& result, const std::vector<uint8_t> &data, bool oaep, unsigned int idx)

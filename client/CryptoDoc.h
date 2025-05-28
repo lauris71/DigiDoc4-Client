@@ -61,7 +61,7 @@ public:
 	QString fileName() const;
 	const std::vector<CDKey>& keys() const;
 	bool move(const QString &to);
-	bool open( const QString &file );
+	bool open(const QString &file);
 	void removeKey(unsigned int id);
 	void clearKeys();
 	bool saveCopy(const QString &filename);

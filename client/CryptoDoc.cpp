@@ -80,6 +80,7 @@ struct CryptoDoc::Private
 	std::vector<IOEntry> files;
 	std::vector<CKey> keys;
 
+	explicit Private() : network(crypto) {}
 	bool isEncryptedWarning(const QString &title) const;
 
 	bool isEncrypted() const {
@@ -320,28 +321,6 @@ bool CryptoDoc::decrypt(const libcdoc::Lock *lock, const QByteArray& secret)
 		return false;
 	}
 
-	if (d->reader->version == 2 &&
-		(lock->type == libcdoc::Lock::Type::SERVER) &&
-		!Settings::CDOC2_NOTIFICATION.isSet()) {
-		auto *dlg = WarningDialog::create()
-			->withTitle(tr("You must enter your PIN code twice in order to decrypt the CDOC2 container"))
-			->withText(tr(
-				"The first PIN entry is required for authentication to the key server referenced in the CDOC2 container. "
-				"Second PIN entry is required to decrypt the CDOC2 container."))
-			->setCancelText(WarningDialog::Cancel)
-			->addButton(WarningDialog::OK, QMessageBox::Ok)
-			->addButton(tr("Don't show again"), QMessageBox::Ignore);
-		switch (dlg->exec())
-		{
-		case QMessageBox::Ok: break;
-		case QMessageBox::Ignore:
-			Settings::CDOC2_NOTIFICATION = true;
-			break;
-		default:
-			return false;
-		}
-	}
-
 	d->crypto.secret.assign(secret.cbegin(), secret.cend());
 
 	TempListConsumer cons;
@@ -374,13 +353,15 @@ bool CryptoDoc::decrypt(const libcdoc::Lock *lock, const QByteArray& secret)
 			str = tr("Cannot read file.");
 			break;
 		case DDCryptoBackend::PIN_CANCELED:
-			str = QCryptoBackend::tr("PIN Canceled");
-			break;
+			return false;
 		case DDCryptoBackend::PIN_INCORRECT:
-			str = QCryptoBackend::tr("PIN Incorrect");
+			str = QCryptoBackend::errorString(QCryptoBackend::Status::PinIncorrect);
 			break;
 		case DDCryptoBackend::PIN_LOCKED:
-			str = QCryptoBackend::tr("PIN locked");
+			str = QCryptoBackend::errorString(QCryptoBackend::Status::PinLocked);
+			break;
+		case DDCryptoBackend::IN_PROGRESS:
+			str = QCryptoBackend::errorString(QCryptoBackend::Status::InProgress);
 			break;
 		default:
 			str = tr("Please check your internet connection and network settings.");

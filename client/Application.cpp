@@ -305,6 +305,10 @@ public:
 #ifdef Q_OS_WIN
 	QStringList	tempFiles;
 #endif // Q_OS_WIN
+
+	~Private() {
+		delete signer;
+	}
 };
 
 Application::Application( int &argc, char **argv )
@@ -427,6 +431,7 @@ Application::Application( int &argc, char **argv )
 	loadTranslation(Settings::LANGUAGE);
 
 	// Clear obsolete registriy settings
+	Settings::CDOC2_NOTIFICATION.clear();
 #ifndef Q_OS_DARWIN
 	Settings::DEFAULT_DIR.clear();
 #endif

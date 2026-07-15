@@ -23,6 +23,7 @@
 #include "CheckConnection.h"
 #include "Common.h"
 #include "MainWindow.h"
+#include "QCryptoBackend.h"
 #include "QSigner.h"
 #include "Settings.h"
 #include "TokenData.h"
@@ -37,8 +38,6 @@
 #include <QtCore/QDateTime>
 #include <QtCore/QFileInfo>
 #include <QtCore/QStringList>
-#include <QtCore/QUrl>
-#include <QtGui/QDesktopServices>
 #include <QtWidgets/QMessageBox>
 
 #include <algorithm>
@@ -252,7 +251,7 @@ QList<std::pair<QSslCertificate,QDateTime>> DigiDocSignature::archiveTimeStamps(
 {
 	QList<std::pair<QSslCertificate,QDateTime>> result;
 	for(const TSAInfo &i: s->ArchiveTimeStamps())
-		result.append({toCertificate(i.cert), toTime(i.time)});
+		result.emplace_back(toCertificate(i.cert), toTime(i.time));
 	return result;
 }
 
@@ -313,9 +312,9 @@ bool SDocumentModel::addFile(const QString &file, const QString &mime)
 	return false;
 }
 
-void SDocumentModel::addTempReference(const QString &file)
+QString SDocumentModel::containerName() const
 {
-	doc->m_tempFiles.append(file);
+	return doc->fileName();
 }
 
 QString SDocumentModel::data(int row) const
@@ -342,23 +341,6 @@ QString SDocumentModel::mime(int row) const
 	return from(doc->b->dataFiles().at(size_t(row))->mediaType());
 }
 
-void SDocumentModel::open(int row)
-{
-	if(row >= rowCount())
-		return;
-	QString path = FileDialog::tempPath(FileDialog::safeName(from(doc->b->dataFiles().at(size_t(row))->fileName())));
-	if(!verifyFile(path))
-		return;
-	if(!QFileInfo::exists(save(row, path)))
-		return;
-	doc->m_tempFiles.append(path);
-	FileDialog::setReadOnly(path);
-	if(!doc->fileName().endsWith(QLatin1String(".pdf"), Qt::CaseInsensitive) && FileDialog::isSignedPDF(path))
-		qApp->showClient({ std::move(path) }, false, false, true);
-	else
-		QDesktopServices::openUrl(QUrl::fromLocalFile(path));
-}
-
 bool SDocumentModel::removeRow(int row)
 {
 	if(!doc->b)
@@ -366,6 +348,7 @@ bool SDocumentModel::removeRow(int row)
 
 	try
 	{
+		removeTempFile(data(row));
 		doc->b->removeDataFile(unsigned(row));
 		doc->modified = true;
 		return true;
@@ -383,9 +366,11 @@ QString SDocumentModel::save(int row, const QString &path) const
 {
 	if(row >= rowCount())
 		return {};
-
-	QFile::remove( path );
+	if(QFileInfo::exists(path))
+		return path;
 	doc->b->dataFiles().at(size_t(row))->saveAs(path.toStdString());
+	if(!QFileInfo::exists(path))
+		return {};
 	FileDialog::setFileZone(path, doc->fileName());
 	return path;
 }
@@ -400,12 +385,7 @@ DigiDoc::DigiDoc(QWidget *parent)
 
 DigiDoc::~DigiDoc()
 {
-	for(const QString &file: m_tempFiles)
-	{
-		//reset read-only attribute to enable delete file
-		FileDialog::setReadOnly(file, false);
-		QFile::remove(file);
-	}
+	m_documentModel->clearTempFolder();
 }
 
 QWidget *DigiDoc::parentWidget() const
@@ -571,25 +551,16 @@ void DigiDoc::load(std::unique_ptr<Container> &&doc, ServiceConfirmation &cb)
 	parentContainer.reset();
 	m_signatures.clear();
 	m_timestamps.clear();
-	for(const QString &file: m_tempFiles)
-	{
-		FileDialog::setReadOnly(file, false);
-		QFile::remove(file);
-	}
-	m_tempFiles.clear();
+	documentModel()->clearTempFolder();
 	b = std::move(doc);
 	if(b && b->mediaType() == "application/vnd.etsi.asic-s+zip" &&
 		b->dataFiles().size() == 1 &&
 		b->signatures().size() == 1)
 	{
-		const DataFile *f = b->dataFiles().at(0);
-		if(from(f->fileName()).endsWith(QStringLiteral(".ddoc"), Qt::CaseInsensitive))
+		if(from(b->dataFiles().at(0)->fileName()).endsWith(QStringLiteral(".ddoc"), Qt::CaseInsensitive))
 		{
-			const QString tmppath = FileDialog::tempPath(FileDialog::safeName(from(f->fileName())));
-			f->saveAs(to(tmppath));
-			if(QFileInfo::exists(tmppath))
+			if(QString tmppath = documentModel()->saveTemp(0); !tmppath.isEmpty())
 			{
-				m_tempFiles.append(tmppath);
 				try {
 					parentContainer = std::exchange(b, Container::openPtr(to(tmppath), &cb));
 				} catch(const Exception &) {}
@@ -598,11 +569,11 @@ void DigiDoc::load(std::unique_ptr<Container> &&doc, ServiceConfirmation &cb)
 	}
 	bool isTimeStamped = parentContainer && parentContainer->signatures().at(0)->trustedSigningTime().compare("2018-07-01T00:00:00Z") < 0;
 	for(const Signature *signature: b->signatures())
-		m_signatures.append(DigiDocSignature(signature, this, isTimeStamped));
+		m_signatures.emplace_back(signature, this, isTimeStamped);
 	if(parentContainer)
 	{
 		for(const Signature *signature: parentContainer->signatures())
-			m_timestamps.append(DigiDocSignature(signature, this));
+			m_timestamps.emplace_back(signature, this);
 	}
 	setState(signatures().isEmpty() ? ContainerState::UnsignedSavedContainer : ContainerState::SignedContainer);
 }
@@ -779,7 +750,7 @@ void DigiDoc::setLastError(const QString &title, const Exception &e)
 	case Exception::PINFailed:
 		dlg->withText(tr("PIN Login failed")); break;
 	case Exception::PINIncorrect:
-		dlg->withText(tr("PIN Incorrect")); break;
+		dlg->withText(QCryptoBackend::errorString(QCryptoBackend::PinIncorrect)); break;
 	case Exception::PINLocked:
 		dlg->withText(tr("PIN Locked. Unblock to reuse PIN.")); break;
 	case Exception::NetworkError:
@@ -815,7 +786,7 @@ bool DigiDoc::sign(const QString &city, const QString &state, const QString &zip
 		qApp->waitForTSL( fileName() );
 		digidoc::Signature *s = b->sign(signer);
 		return modified = waitFor([&] {
-			m_signatures.append(DigiDocSignature(s, this, false));
+			m_signatures.emplace_back(s, this, false);
 			return true;
 		});
 	}
@@ -828,7 +799,7 @@ bool DigiDoc::sign(const QString &city, const QString &state, const QString &zip
 		case Exception::PINIncorrect:
 			WarningDialog::create()
 				->withTitle(tr("Failed to sign container"))
-				->withText(tr("PIN Incorrect"))
+				->withText(QCryptoBackend::errorString(QCryptoBackend::PinIncorrect))
 				->exec();
 			return sign(city, state, zip, country, role, signer);
 		case Exception::InvalidUrl:

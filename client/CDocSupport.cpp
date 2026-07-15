@@ -446,7 +446,7 @@ TempListConsumer::open(const std::string& name, int64_t size)
 	std::string truncated = name;
 	if (truncated.starts_with("./PaxHeaders.X/"))
 		truncated = truncated.substr(15);
-	IOEntry io({truncated, "application/octet-stream", 0, {}});
+	IOEntry io({std::move(truncated), "application/octet-stream", 0, {}});
 	if ((size < 0) || (size > MAX_VEC_SIZE)) {
 		io.data = std::make_unique<QTemporaryFile>();
 	} else {
